@@ -18,7 +18,6 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 var app = builder.Build();
 
-var debuggerChecked = false;
 var jsonReadOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 var jsonWriteOptions = new JsonSerializerOptions
 {
@@ -29,22 +28,6 @@ app.MapPost("/invoke", async (HttpContext ctx) =>
 {
     using var reader = new StreamReader(ctx.Request.Body);
     var eventJson = await reader.ReadToEndAsync();
-
-    // On first request, wait for debugger if WAIT_FOR_DEBUGGER is set
-    if (!debuggerChecked && Environment.GetEnvironmentVariable("DOTNET_LAMBDA_WAIT_FOR_DEBUGGER") == "1")
-    {
-        debuggerChecked = true;
-        if (!System.Diagnostics.Debugger.IsAttached)
-        {
-            Console.WriteLine($"[DebugHost] ⏸️  Waiting for debugger... (PID: {Environment.ProcessId})");
-            Console.WriteLine($"[DebugHost]    Run & Debug → pick \"DebugHost\" to attach");
-            while (!System.Diagnostics.Debugger.IsAttached)
-            {
-                await Task.Delay(100);
-            }
-            Console.WriteLine($"[DebugHost] ✅ Debugger attached! Processing request...");
-        }
-    }
 
     try
     {

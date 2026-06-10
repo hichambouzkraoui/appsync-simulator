@@ -62,7 +62,6 @@ class LambdaDotnetDatasource {
         DOTNET_ROOT: '/usr/local/share/dotnet',
         LAMBDA_DEBUG_PORT: this.debugPort,
         ASPNETCORE_URLS: `http://localhost:${this.debugPort}`,
-        DOTNET_LAMBDA_WAIT_FOR_DEBUGGER: process.env.DOTNET_LAMBDA_WAIT_FOR_DEBUGGER || '0',
         DEBUGHOST_PID_FILE: path.resolve('.debughost.pid'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
