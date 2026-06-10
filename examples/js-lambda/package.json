@@ -1,0 +1,9 @@
+{
+  "name": "user-service-lambda",
+  "version": "1.0.0",
+  "description": "Example JS Lambda for AppSync simulator - handles order operations",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  }
+}

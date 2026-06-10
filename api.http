@@ -1,0 +1,272 @@
+### Health Check
+GET http://localhost:4000/health
+
+###
+
+### ============================================
+### MUTATIONS - VTL Resolvers + DynamoDB
+### ============================================
+
+### Create User (VTL + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation CreateUser($input: CreateUserInput!) { createUser(input: $input) { id name email createdAt } }",
+  "variables": {
+    "input": {
+      "name": "John Doe",
+      "email": "john@example.com"
+    }
+  }
+}
+
+###
+
+### Delete User (VTL + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation DeleteUser($id: ID!) { deleteUser(id: $id) }",
+  "variables": {
+    "id": "some-user-id"
+  }
+}
+
+###
+
+### ============================================
+### QUERIES - VTL Resolvers + DynamoDB
+### ============================================
+
+### Get User by ID (VTL + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetUser($id: ID!) { getUser(id: $id) { id name email createdAt updatedAt } }",
+  "variables": {
+    "id": "some-user-id"
+  }
+}
+
+###
+
+### List All Users (VTL + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query { listUsers { id name email createdAt } }"
+}
+
+###
+
+### ============================================
+### MUTATIONS - JS Resolvers + JS Lambda
+### ============================================
+
+### Create Order (JS Resolver + JS Lambda)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId items { productId quantity price } total status createdAt } }",
+  "variables": {
+    "input": {
+      "userId": "user-1",
+      "items": [
+        { "productId": "prod-001", "quantity": 2, "price": 29.99 },
+        { "productId": "prod-002", "quantity": 1, "price": 49.99 }
+      ]
+    }
+  }
+}
+
+###
+
+### Create Order - Single Item
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId total status createdAt } }",
+  "variables": {
+    "input": {
+      "userId": "user-2",
+      "items": [
+        { "productId": "prod-100", "quantity": 5, "price": 9.99 }
+      ]
+    }
+  }
+}
+
+###
+
+### ============================================
+### MUTATIONS - JS Resolvers + .NET Lambda
+### ============================================
+
+### Process Order (JS Resolver + .NET Lambda)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation ProcessOrder($id: ID!) { processOrder(id: $id) { id status createdAt } }",
+  "variables": {
+    "id": "order-123"
+  }
+}
+
+###
+
+### ============================================
+### MUTATIONS - JS Resolvers + NONE Datasource
+### ============================================
+
+### Update User (JS Resolver + NONE datasource)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name email updatedAt } }",
+  "variables": {
+    "id": "user-1",
+    "input": {
+      "name": "Jane Doe",
+      "email": "jane@example.com"
+    }
+  }
+}
+
+###
+
+### Update User - Name Only
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name updatedAt } }",
+  "variables": {
+    "id": "user-1",
+    "input": {
+      "name": "Updated Name"
+    }
+  }
+}
+
+###
+
+### ============================================
+### QUERIES - JS Resolvers + DynamoDB
+### ============================================
+
+### Get Order by ID (JS Resolver + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetOrder($id: ID!) { getOrder(id: $id) { id userId items { productId quantity price } total status createdAt } }",
+  "variables": {
+    "id": "order-123"
+  }
+}
+
+###
+
+### List Orders by User (JS Resolver + DynamoDB)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query ListOrders($userId: ID!) { listOrders(userId: $userId) { id userId total status createdAt } }",
+  "variables": {
+    "userId": "user-1"
+  }
+}
+
+###
+
+### ============================================
+### ERROR CASES / VALIDATION
+### ============================================
+
+### Update User - Invalid Email (should return validation error)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name email } }",
+  "variables": {
+    "id": "user-1",
+    "input": {
+      "email": "not-an-email"
+    }
+  }
+}
+
+###
+
+### Create Order - Empty Items (should return error from Lambda)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id status } }",
+  "variables": {
+    "input": {
+      "userId": "user-1",
+      "items": []
+    }
+  }
+}
+
+###
+
+### ============================================
+### WITH CUSTOM IDENTITY HEADER
+### ============================================
+
+### Create Order with custom identity
+POST http://localhost:4000/graphql
+Content-Type: application/json
+X-AppSync-Identity: {"sub": "abc-123", "username": "admin-user"}
+
+{
+  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId total status } }",
+  "variables": {
+    "input": {
+      "userId": "user-admin",
+      "items": [
+        { "productId": "premium-001", "quantity": 1, "price": 199.99 }
+      ]
+    }
+  }
+}
+
+###
+
+### ============================================
+### INTROSPECTION
+### ============================================
+
+### Schema Introspection
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ __schema { queryType { name } mutationType { name } types { name kind } } }"
+}
+
+###
+
+### Type Details - User
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ __type(name: \"User\") { name fields { name type { name kind ofType { name } } } } }"
+}
+
+###

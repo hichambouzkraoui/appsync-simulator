@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+*.log
+.debughost.pid
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+
+# IDE
+.idea/
+.vscode/
+*.swp

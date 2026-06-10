@@ -1,0 +1,96 @@
+# AppSync Local Simulator Configuration
+
+schema: schema.graphql
+
+# Datasource definitions
+datasources:
+  # DynamoDB datasource for user CRUD operations
+  UsersTable:
+    type: AMAZON_DYNAMODB
+    config:
+      tableName: Users
+      endpoint: http://localhost:8000
+      region: us-east-1
+
+  # DynamoDB datasource for orders
+  OrdersTable:
+    type: AMAZON_DYNAMODB
+    config:
+      tableName: Orders
+      endpoint: http://localhost:8000
+      region: us-east-1
+
+  # JavaScript Lambda datasource
+  UserServiceLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: nodejs
+      functionPath: ../examples/js-lambda/index.js
+      handler: handler
+
+  # .NET Lambda datasource
+  OrderProcessorLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: dotnet
+      projectPath: ../examples/dotnet-lambda
+      assembly: DotnetLambda
+      handler: DotnetLambda::DotnetLambda.Function::FunctionHandler
+
+  # NONE datasource (local resolution)
+  LocalResolver:
+    type: NONE
+
+# Resolver mappings
+resolvers:
+  # VTL resolvers for DynamoDB operations
+  Query.getUser:
+    datasource: UsersTable
+    type: vtl
+    requestTemplate: ../resolvers/vtl/getUser.request.vtl
+    responseTemplate: ../resolvers/vtl/getUser.response.vtl
+
+  Query.listUsers:
+    datasource: UsersTable
+    type: vtl
+    requestTemplate: ../resolvers/vtl/listUsers.request.vtl
+    responseTemplate: ../resolvers/vtl/listUsers.response.vtl
+
+  Mutation.createUser:
+    datasource: UsersTable
+    type: vtl
+    requestTemplate: ../resolvers/vtl/createUser.request.vtl
+    responseTemplate: ../resolvers/vtl/createUser.response.vtl
+
+  Mutation.deleteUser:
+    datasource: UsersTable
+    type: vtl
+    requestTemplate: ../resolvers/vtl/deleteUser.request.vtl
+    responseTemplate: ../resolvers/vtl/deleteUser.response.vtl
+
+  # JavaScript resolvers
+  Query.getOrder:
+    datasource: OrdersTable
+    type: js
+    code: ../resolvers/js/getOrder.js
+
+  Query.listOrders:
+    datasource: OrdersTable
+    type: js
+    code: ../resolvers/js/listOrders.js
+
+  Mutation.createOrder:
+    datasource: UserServiceLambda
+    type: js
+    code: ../resolvers/js/createOrder.js
+
+  # .NET Lambda resolver
+  Mutation.processOrder:
+    datasource: OrderProcessorLambda
+    type: js
+    code: ../resolvers/js/processOrder.js
+
+  Mutation.updateUser:
+    datasource: LocalResolver
+    type: js
+    code: ../resolvers/js/updateUser.js

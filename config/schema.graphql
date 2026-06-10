@@ -1,0 +1,66 @@
+type Query {
+  getUser(id: ID!): User
+  listUsers: [User!]!
+  getOrder(id: ID!): Order
+  listOrders(userId: ID!): [Order!]!
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+  updateUser(id: ID!, input: UpdateUserInput!): User
+  deleteUser(id: ID!): Boolean!
+  createOrder(input: CreateOrderInput!): Order!
+  processOrder(id: ID!): Order!
+}
+
+input CreateUserInput {
+  name: String!
+  email: String!
+}
+
+input UpdateUserInput {
+  name: String
+  email: String
+}
+
+input CreateOrderInput {
+  userId: ID!
+  items: [OrderItemInput!]!
+}
+
+input OrderItemInput {
+  productId: String!
+  quantity: Int!
+  price: Float!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  createdAt: String!
+  updatedAt: String
+}
+
+type Order {
+  id: ID!
+  userId: ID!
+  items: [OrderItem!]!
+  total: Float!
+  status: OrderStatus!
+  createdAt: String!
+}
+
+type OrderItem {
+  productId: String!
+  quantity: Int!
+  price: Float!
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}

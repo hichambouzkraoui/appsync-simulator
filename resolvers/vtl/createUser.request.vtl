@@ -1,0 +1,14 @@
+#set($id = $util.autoId())
+#set($now = $util.time.nowISO8601())
+
+{
+  "operation": "PutItem",
+  "key": {
+    "id": { "S": "$id" }
+  },
+  "attributeValues": {
+    "name": { "S": "$ctx.args.input.name" },
+    "email": { "S": "$ctx.args.input.email" },
+    "createdAt": { "S": "$now" }
+  }
+}
