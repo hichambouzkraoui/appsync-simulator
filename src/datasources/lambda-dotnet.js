@@ -36,7 +36,7 @@ class LambdaDotnetDatasource {
    * Build, launch, and wait for the debug host to be ready.
    */
   async launchAndWait() {
-    const hostDir = path.resolve(this.projectPath, '..', '.debug-host');
+    const hostDir = path.resolve(__dirname, '..', 'debug-host');
 
     // Build
     console.log(`  [Lambda/.NET] Building debug host...`);
