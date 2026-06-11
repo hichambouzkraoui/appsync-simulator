@@ -247,3 +247,58 @@ Content-Type: application/json
 }
 
 ###
+
+### ============================================
+### INVENTORY (Java Lambda)
+### ============================================
+
+### Check Stock
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ checkStock(productId: \"prod-001\") { productId productName totalStock reserved available inStock } }"
+}
+
+###
+
+### Reserve Stock
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { reserveStock(input: { productId: \"prod-001\", orderId: \"order-99\", quantity: 5 }) { reservationId productId orderId quantity status createdAt } }"
+}
+
+###
+
+### Release Stock (use reservationId from above)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation ReleaseStock($id: ID!) { releaseStock(reservationId: $id) { reservationId status releasedAt } }",
+  "variables": { "id": "REPLACE_WITH_RESERVATION_ID" }
+}
+
+###
+
+### Adjust Stock (+10)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { adjustStock(input: { productId: \"prod-003\", adjustment: 10, reason: \"Restock delivery\" }) { productId previousStock adjustment currentStock reason adjustedAt } }"
+}
+
+###
+
+### Adjust Stock (-5)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { adjustStock(input: { productId: \"prod-002\", adjustment: -5, reason: \"Damaged items\" }) { productId previousStock adjustment currentStock reason adjustedAt } }"
+}
+
+###

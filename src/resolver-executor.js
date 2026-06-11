@@ -2,6 +2,7 @@ const { VtlResolver } = require('./resolvers/vtl-resolver');
 const { JsResolver } = require('./resolvers/js-resolver');
 const { LambdaJsDatasource } = require('./datasources/lambda-js');
 const { LambdaDotnetDatasource } = require('./datasources/lambda-dotnet');
+const { LambdaJavaDatasource } = require('./datasources/lambda-java');
 const { DynamoDBDatasource } = require('./datasources/dynamodb');
 const { NoneDatasource } = require('./datasources/none');
 
@@ -20,6 +21,8 @@ function createResolverExecutor(config) {
       case 'AWS_LAMBDA':
         if (dsConfig.config.runtime === 'dotnet') {
           datasourceInstances[name] = new LambdaDotnetDatasource(name, dsConfig.config);
+        } else if (dsConfig.config.runtime === 'java') {
+          datasourceInstances[name] = new LambdaJavaDatasource(name, dsConfig.config);
         } else {
           datasourceInstances[name] = new LambdaJsDatasource(name, dsConfig.config);
         }

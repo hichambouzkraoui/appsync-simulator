@@ -1,14 +1,24 @@
+# Node
 node_modules/
 dist/
-.env
 *.log
 
-# .NET build output
+# .NET
 bin/
 obj/
 *.user
 *.suo
 
-# IDE (keep .vscode committed for shared launch configs)
+# Java
+target/
+build/
+*.class
+*.jar
+!src/lambda-host-java/*.class
+
+# Environment
+.env
+
+# IDE (keep .vscode committed for shared configs)
 .idea/
 *.swp

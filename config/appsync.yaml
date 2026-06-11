@@ -55,6 +55,14 @@ datasources:
   LocalResolver:
     type: NONE
 
+  # Java Lambda — inventory service
+  InventoryServiceLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: java
+      projectPath: ../examples/java-lambda
+      handler: com.example.InventoryHandler
+
 # Resolver mappings
 resolvers:
   # ── Users (VTL + DynamoDB) ──────────────────────────────────────────────────
@@ -159,3 +167,24 @@ resolvers:
     datasource: PaymentServiceLambda
     type: js
     code: ../resolvers/js/refundPayment.js
+
+  # ── Inventory (Java Lambda) ─────────────────────────────────────────────────
+  Query.checkStock:
+    datasource: InventoryServiceLambda
+    type: js
+    code: ../resolvers/js/checkStock.js
+
+  Mutation.reserveStock:
+    datasource: InventoryServiceLambda
+    type: js
+    code: ../resolvers/js/reserveStock.js
+
+  Mutation.releaseStock:
+    datasource: InventoryServiceLambda
+    type: js
+    code: ../resolvers/js/releaseStock.js
+
+  Mutation.adjustStock:
+    datasource: InventoryServiceLambda
+    type: js
+    code: ../resolvers/js/adjustStock.js
