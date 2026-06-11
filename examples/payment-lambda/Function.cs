@@ -14,7 +14,7 @@ public class Function
     // In-memory payment store for local simulation
     private static readonly Dictionary<string, Payment> _payments = new();
 
-    public static PaymentResponse FunctionHandler(AppSyncEvent input)
+    public static object FunctionHandler(AppSyncEvent input)
     {
         Console.Error.WriteLine($"[PaymentLambda] Processing: {input.Payload?.Operation}");
 
@@ -25,22 +25,17 @@ public class Function
 
         return input.Payload.Operation switch
         {
-            "chargePayment"  => ChargePayment(data),
-            "refundPayment"  => RefundPayment(data),
-            "getPayment"     => GetPayment(data),
-            "listPayments"   => throw new InvalidOperationException("listPayments should return a list"),
+            "chargePayment" => ChargePayment(data),
+            "refundPayment" => RefundPayment(data),
+            "getPayment"    => GetPayment(data),
+            "listPayments"  => ListPayments(data),
             _ => new PaymentResponse { Error = $"Unknown operation: {input.Payload.Operation}" }
         };
     }
 
-    /// <summary>List handler — returns payments for an order.</summary>
-    public static ListPaymentsResponse ListPaymentsFunctionHandler(AppSyncEvent input)
+    private static ListPaymentsResponse ListPayments(PayloadData data)
     {
-        Console.Error.WriteLine($"[PaymentLambda] Processing: listPayments");
-
-        var data = ResolveData(input.Payload!);
         var orderId = data.OrderId;
-
         if (string.IsNullOrEmpty(orderId))
             return new ListPaymentsResponse { Error = "orderId is required" };
 

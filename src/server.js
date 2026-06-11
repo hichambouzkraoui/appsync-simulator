@@ -85,6 +85,30 @@ async function startServer() {
     console.log(`\n✅ AppSync Local Simulator running at http://localhost:${PORT}/graphql`);
     console.log(`   Health check: http://localhost:${PORT}/health\n`);
   });
+
+  // Wait for all .NET Lambdas to be ready, then print summary
+  const dotnetDatasources = Object.values(executor.datasources || {})
+    .filter((ds) => ds.startPromise);
+  const allReady = dotnetDatasources.map((ds) => ds.startPromise);
+
+  Promise.all(allReady).then(() => {
+    const summary = Object.entries(config.datasources).map(([name, ds]) => {
+      switch (ds.type) {
+        case 'AWS_LAMBDA':
+          return `   • ${name} (${ds.config.runtime} lambda)`;
+        case 'AMAZON_DYNAMODB':
+          return `   • ${name} (dynamodb → ${ds.config.tableName})`;
+        case 'NONE':
+          return `   • ${name} (none)`;
+        default:
+          return `   • ${name} (${ds.type})`;
+      }
+    });
+
+    console.log(`\n📦 All datasources ready:`);
+    summary.forEach((l) => console.log(l));
+    console.log('');
+  }).catch(() => {});
 }
 
 function buildResolvers(config, executor) {

@@ -2,26 +2,27 @@ const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// Build the LambdaHost once on first use
+let hostBinaryPath = null;
+let hostBuildPromise = null;
+
 /**
  * .NET Lambda datasource.
  *
- * Runs each Lambda as a persistent process using a stdin/stdout JSON line protocol.
- * State is preserved across invocations, just like JS Lambdas loaded via require().
+ * Runs each Lambda as a persistent process using a generic host (LambdaHost)
+ * that loads the Lambda DLL via reflection and invokes its handler method.
  *
- * Each Lambda's .NET project must support persistent mode (LAMBDA_PERSISTENT=1):
- *   - Print __READY__ to stdout on startup
- *   - Read one JSON event per line from stdin
- *   - Write one JSON response per line to stdout
+ * The Lambda code requires NO modifications — it's a standard .NET Lambda with
+ * a static handler method. The host manages the stdin/stdout protocol.
  *
- * The process is launched using the compiled binary directly so the OS process name
- * matches the assembly name (visible in the IDE debugger process picker).
+ * Process names in the debugger match the Lambda's <AssemblyName> from its .csproj.
  */
 class LambdaDotnetDatasource {
   constructor(name, config) {
     this.name = name;
     this.projectPath = config.projectPath;
     this.assembly = config.assembly || path.basename(config.projectPath);
-    this.handler = config.handler;
+    this.handler = config.handler; // Format: Assembly::Namespace.Class::Method
 
     this.process = null;
     this.startPromise = null;
@@ -35,7 +36,7 @@ class LambdaDotnetDatasource {
   async launch() {
     const projectDir = path.resolve(this.projectPath);
 
-    // Always build Debug for local dev — enables breakpoints and PDB symbols
+    // Build the Lambda project
     console.log(`  [Lambda/.NET] Building ${this.name}...`);
     try {
       execSync('dotnet build -c Debug --nologo -v quiet', {
@@ -48,18 +49,20 @@ class LambdaDotnetDatasource {
       throw new Error(`Failed to build ${this.name}: ${out}`);
     }
 
-    // Launch the compiled binary directly (process name = assembly name)
-    const binaryPath = this.findBinary(projectDir);
-    console.log(`  [Lambda/.NET] Launching ${path.basename(binaryPath)}`);
+    // Build the generic LambdaHost (once)
+    const hostBinary = await this.ensureHostBuilt();
 
-    this.process = spawn(binaryPath, [], {
+    // Find the Lambda DLL
+    const lambdaDll = this.findDll(projectDir);
+    console.log(`  [Lambda/.NET] Launching ${this.name} via LambdaHost`);
+
+    // Launch: LambdaHost <dll> <handler>
+    this.process = spawn(hostBinary, [lambdaDll, this.handler], {
       cwd: projectDir,
       env: {
         ...process.env,
-        DOTNET_ROOT: '/usr/local/share/dotnet',
         AWS_LAMBDA_FUNCTION_NAME: this.name,
         AWS_REGION: 'us-east-1',
-        LAMBDA_PERSISTENT: '1',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -93,7 +96,7 @@ class LambdaDotnetDatasource {
       }
     });
 
-    // Wait for __READY__ signal
+    // Wait for __READY__
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`${this.name} did not become ready in 30s`)),
@@ -159,15 +162,53 @@ class LambdaDotnetDatasource {
         reject: (e) => { clearTimeout(timeout); reject(e); },
       };
 
-      // Send event as a single JSON line
       this.process.stdin.write(eventJson.replace(/\n/g, ' ') + '\n');
     });
   }
 
   /**
-   * Find the compiled binary in bin/Debug/net{version}/{assembly}
+   * Build the generic LambdaHost binary (shared across all .NET datasources).
    */
-  findBinary(projectDir) {
+  async ensureHostBuilt() {
+    if (hostBinaryPath) return hostBinaryPath;
+
+    if (!hostBuildPromise) {
+      hostBuildPromise = (async () => {
+        const hostDir = path.resolve(__dirname, '..', 'lambda-host');
+        console.log(`  [Lambda/.NET] Building LambdaHost...`);
+        try {
+          execSync('dotnet build -c Debug --nologo -v quiet', {
+            cwd: hostDir,
+            stdio: 'pipe',
+            timeout: 60000,
+          });
+        } catch (err) {
+          const out = err.stdout?.toString() || err.stderr?.toString() || err.message;
+          throw new Error(`Failed to build LambdaHost: ${out}`);
+        }
+
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const binDir = path.join(hostDir, 'bin', 'Debug');
+        const frameworks = fs.readdirSync(binDir).filter(
+          (d) => fs.statSync(path.join(binDir, d)).isDirectory() && d.startsWith('net')
+        );
+        hostBinaryPath = path.join(binDir, frameworks[0], 'LambdaHost' + ext);
+
+        if (!fs.existsSync(hostBinaryPath)) {
+          throw new Error(`LambdaHost binary not found: ${hostBinaryPath}`);
+        }
+
+        return hostBinaryPath;
+      })();
+    }
+
+    return hostBuildPromise;
+  }
+
+  /**
+   * Find the compiled Lambda DLL in bin/Debug/net{version}/{assembly}.dll
+   */
+  findDll(projectDir) {
     const binDir = path.join(projectDir, 'bin', 'Debug');
     if (!fs.existsSync(binDir)) {
       throw new Error(`Build output not found: ${binDir}`);
@@ -181,12 +222,12 @@ class LambdaDotnetDatasource {
       throw new Error(`No framework folder found in ${binDir}`);
     }
 
-    const binaryPath = path.join(binDir, frameworks[0], this.assembly);
-    if (!fs.existsSync(binaryPath)) {
-      throw new Error(`Binary not found: ${binaryPath}`);
+    const dllPath = path.join(binDir, frameworks[0], this.assembly + '.dll');
+    if (!fs.existsSync(dllPath)) {
+      throw new Error(`Lambda DLL not found: ${dllPath}`);
     }
 
-    return binaryPath;
+    return dllPath;
   }
 }
 

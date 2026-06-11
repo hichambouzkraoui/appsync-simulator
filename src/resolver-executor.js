@@ -37,6 +37,8 @@ function createResolverExecutor(config) {
   const jsResolver = new JsResolver();
 
   return {
+    datasources: datasourceInstances,
+
     async execute(fieldPath, resolverConfig, context) {
       const datasource = datasourceInstances[resolverConfig.datasource];
       if (!datasource) {

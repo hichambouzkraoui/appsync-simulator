@@ -12,6 +12,14 @@ class LambdaJsDatasource {
     this.handler = null;
 
     console.log(`  [Lambda/JS] Initialized: ${name} → ${this.functionPath}::${this.handlerName}`);
+
+    // Validate the handler exists at startup
+    try {
+      this.loadHandler();
+      console.log(`  [Lambda/JS] ${name} ready`);
+    } catch (err) {
+      console.error(`  [Lambda/JS] ${name} failed to load: ${err.message}`);
+    }
   }
 
   /**
