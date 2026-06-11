@@ -1,69 +1,36 @@
 const fs = require('fs');
 const Velocity = require('velocityjs');
+const { generateId } = require('../utils');
 
 /**
- * VTL (Velocity Template Language) resolver engine.
- * Evaluates AppSync VTL request/response mapping templates.
+ * VTL resolver engine — evaluates AppSync VTL request/response mapping templates.
  */
 class VtlResolver {
-  /**
-   * Execute a VTL resolver pair (request + response templates).
-   */
   async execute(resolverConfig, datasource, context) {
-    // Read templates
     const requestTemplate = fs.readFileSync(resolverConfig.requestTemplate, 'utf-8');
     const responseTemplate = fs.readFileSync(resolverConfig.responseTemplate, 'utf-8');
 
-    // Build VTL context
-    const vtlContext = this.buildVtlContext(context);
+    const vtlCtx = this.buildContext(context);
 
-    // Evaluate request template
-    const requestResult = this.evaluateTemplate(requestTemplate, vtlContext);
-
+    // Request
+    const requestJson = this.render(requestTemplate, vtlCtx);
     let parsedRequest;
-    try {
-      parsedRequest = JSON.parse(requestResult);
-    } catch {
-      parsedRequest = requestResult;
-    }
+    try { parsedRequest = JSON.parse(requestJson); } catch { parsedRequest = requestJson; }
 
-    console.log(`  [VTL] Request template result:`, JSON.stringify(parsedRequest).substring(0, 200));
+    // Datasource
+    const result = await datasource.invoke(parsedRequest, context);
 
-    // Invoke datasource
-    const datasourceResult = await datasource.invoke(parsedRequest, context);
-
-    // Build response context with result
-    const responseContext = {
-      ...vtlContext,
-      context: {
-        ...vtlContext.context,
-        result: datasourceResult,
-      },
-      ctx: {
-        ...vtlContext.ctx,
-        result: datasourceResult,
-      },
+    // Response
+    const responseCtx = {
+      ...vtlCtx,
+      context: { ...vtlCtx.context, result },
+      ctx: { ...vtlCtx.ctx, result },
     };
-
-    // Evaluate response template
-    const responseResult = this.evaluateTemplate(responseTemplate, responseContext);
-
-    let parsedResponse;
-    try {
-      parsedResponse = JSON.parse(responseResult);
-    } catch {
-      parsedResponse = responseResult;
-    }
-
-    return parsedResponse;
+    const responseJson = this.render(responseTemplate, responseCtx);
+    try { return JSON.parse(responseJson); } catch { return responseJson; }
   }
 
-  /**
-   * Build the VTL context object that maps to AppSync's $context / $ctx.
-   */
-  buildVtlContext(context) {
-    const util = this.buildUtilFunctions();
-
+  buildContext(context) {
     const ctxObj = {
       arguments: context.arguments || {},
       args: context.arguments || {},
@@ -76,103 +43,67 @@ class VtlResolver {
       error: null,
     };
 
-    return {
-      context: ctxObj,
-      ctx: ctxObj,
-      util,
-      utils: util,
-    };
-  }
-
-  /**
-   * Build AppSync $util helper functions for VTL templates.
-   */
-  buildUtilFunctions() {
-    return {
+    const util = {
       autoId: () => generateId(),
       time: {
         nowISO8601: () => new Date().toISOString(),
         nowEpochSeconds: () => Math.floor(Date.now() / 1000),
         nowEpochMilliSeconds: () => Date.now(),
-        nowFormatted: (format) => new Date().toISOString(),
+        nowFormatted: () => new Date().toISOString(),
       },
       dynamodb: {
         toDynamoDB: (value) => {
           if (typeof value === 'string') return { S: value };
           if (typeof value === 'number') return { N: String(value) };
           if (typeof value === 'boolean') return { BOOL: value };
-          if (Array.isArray(value)) return { L: value.map((v) => this.toDynamoDB(v)) };
-          if (value === null || value === undefined) return { NULL: true };
+          if (value == null) return { NULL: true };
+          if (Array.isArray(value)) return { L: value };
           return { S: JSON.stringify(value) };
         },
         toDynamoDBJson: (value) => {
           if (typeof value === 'string') return JSON.stringify({ S: value });
           if (typeof value === 'number') return JSON.stringify({ N: String(value) });
           if (typeof value === 'boolean') return JSON.stringify({ BOOL: value });
-          if (value === null || value === undefined) return JSON.stringify({ NULL: true });
+          if (value == null) return JSON.stringify({ NULL: true });
           if (Array.isArray(value)) return JSON.stringify({ L: value });
           return JSON.stringify({ S: JSON.stringify(value) });
         },
-        toStringJson: (value) => JSON.stringify({ S: String(value) }),
-        toNumberJson: (value) => JSON.stringify({ N: String(value) }),
-        toBooleanJson: (value) => JSON.stringify({ BOOL: Boolean(value) }),
+        toStringJson: (v) => JSON.stringify({ S: String(v) }),
+        toNumberJson: (v) => JSON.stringify({ N: String(v) }),
+        toBooleanJson: (v) => JSON.stringify({ BOOL: Boolean(v) }),
         toNullJson: () => JSON.stringify({ NULL: true }),
-        toMapJson: (value) => JSON.stringify(value),
-        toListJson: (value) => JSON.stringify(value),
-        toString: (value) => ({ S: String(value) }),
-        toNumber: (value) => ({ N: String(value) }),
+        toMapJson: (v) => JSON.stringify(v),
+        toListJson: (v) => JSON.stringify(v),
+        toString: (v) => ({ S: String(v) }),
+        toNumber: (v) => ({ N: String(v) }),
       },
       toJson: (obj) => JSON.stringify(obj),
       parseJson: (str) => JSON.parse(str),
-      qr: () => {},  // quiet reference - no output
+      qr: () => {},
       quiet: () => {},
-      escapeJavaScript: (str) => str.replace(/'/g, "\\'").replace(/"/g, '\\"'),
-      urlEncode: (str) => encodeURIComponent(str),
-      urlDecode: (str) => decodeURIComponent(str),
-      base64Encode: (str) => Buffer.from(str).toString('base64'),
-      base64Decode: (str) => Buffer.from(str, 'base64').toString('utf-8'),
-      error: (message, type) => {
-        const err = new Error(message);
-        err.type = type;
-        throw err;
-      },
-      appendError: (message, type) => {
-        console.warn(`[VTL] AppendError: ${type}: ${message}`);
-      },
-      validate: (condition, message, type) => {
-        if (!condition) {
-          const err = new Error(message);
-          err.type = type || 'ValidationError';
-          throw err;
-        }
+      escapeJavaScript: (s) => s.replace(/'/g, "\\'").replace(/"/g, '\\"'),
+      urlEncode: (s) => encodeURIComponent(s),
+      urlDecode: (s) => decodeURIComponent(s),
+      base64Encode: (s) => Buffer.from(s).toString('base64'),
+      base64Decode: (s) => Buffer.from(s, 'base64').toString('utf-8'),
+      error: (message, type) => { const e = new Error(message); e.type = type; throw e; },
+      appendError: (message, type) => console.warn(`[VTL] AppendError: ${type}: ${message}`),
+      validate: (cond, msg, type) => {
+        if (!cond) { const e = new Error(msg); e.type = type || 'ValidationError'; throw e; }
         return '';
       },
     };
+
+    return { context: ctxObj, ctx: ctxObj, util, utils: util };
   }
 
-  /**
-   * Evaluate a VTL template string with the given context.
-   */
-  evaluateTemplate(template, context) {
+  render(template, context) {
     try {
-      // velocityjs compile and render
-      const result = Velocity.render(template, context, {}, {
-        escape: false,
-      });
-      return result.trim();
+      return Velocity.render(template, context, {}, { escape: false }).trim();
     } catch (error) {
-      console.error('[VTL] Template evaluation error:', error.message);
-      throw new Error(`VTL template evaluation failed: ${error.message}`);
+      throw new Error(`VTL evaluation failed: ${error.message}`);
     }
   }
-}
-
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }
 
 module.exports = { VtlResolver };

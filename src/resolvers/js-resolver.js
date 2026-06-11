@@ -1,67 +1,36 @@
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
+const { generateId } = require('../utils');
 
 /**
- * JavaScript resolver engine (APPSYNC_JS runtime).
- * Executes AppSync JS resolvers that export request() and response() functions.
+ * APPSYNC_JS resolver engine — executes JS resolvers with request()/response() handlers.
  */
 class JsResolver {
-  constructor() {
-    this.resolverCache = new Map();
-  }
-
-  /**
-   * Execute a JS resolver with request/response handlers.
-   */
   async execute(resolverConfig, datasource, context) {
-    const codePath = resolverConfig.code;
-    const resolverCode = this.loadResolver(codePath);
-
-    // Build the AppSync JS runtime context
+    const code = this.loadCode(resolverConfig.code);
     const runtime = this.buildRuntime(context);
 
-    // Execute request handler
-    const requestResult = this.executeHandler(resolverCode, 'request', runtime, context);
-    console.log(`  [JS] Request handler result:`, JSON.stringify(requestResult).substring(0, 200));
+    // Request
+    const requestResult = this.runHandler(code, 'request', runtime);
 
-    // Invoke datasource with the request result
+    // Datasource
     const datasourceResult = await datasource.invoke(requestResult, context);
 
-    // Execute response handler with datasource result
-    const responseCtx = {
-      ...context,
-      result: datasourceResult,
-    };
-    const responseRuntime = this.buildRuntime(responseCtx);
-    const responseResult = this.executeHandler(resolverCode, 'response', responseRuntime, responseCtx);
-
-    return responseResult;
+    // Response
+    const responseRuntime = this.buildRuntime({ ...context, result: datasourceResult });
+    return this.runHandler(code, 'response', responseRuntime);
   }
 
-  /**
-   * Load and cache resolver code from file.
-   */
-  loadResolver(codePath) {
+  loadCode(codePath) {
     const resolved = path.resolve(codePath);
-
-    // In dev mode, always reload; in prod, use cache
-    if (process.env.NODE_ENV !== 'production' || !this.resolverCache.has(resolved)) {
-      if (!fs.existsSync(resolved)) {
-        throw new Error(`JS resolver file not found: ${resolved}`);
-      }
-      const code = fs.readFileSync(resolved, 'utf-8');
-      this.resolverCache.set(resolved, code);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`JS resolver file not found: ${resolved}`);
     }
-
-    return this.resolverCache.get(resolved);
+    return fs.readFileSync(resolved, 'utf-8');
   }
 
-  /**
-   * Execute a specific handler (request or response) from resolver code.
-   */
-  executeHandler(code, handlerName, runtime, context) {
-    // Create a sandboxed module environment
+  runHandler(code, handlerName, runtime) {
     const moduleExports = {};
     const moduleObj = { exports: moduleExports };
 
@@ -69,57 +38,31 @@ class JsResolver {
       exports: moduleExports,
       module: moduleObj,
       require: () => { throw new Error('require is not available in APPSYNC_JS runtime'); },
-      console: {
-        log: (...args) => console.log(`    [Resolver]`, ...args),
-        error: (...args) => console.error(`    [Resolver]`, ...args),
-      },
-      // AppSync JS runtime utilities
+      console: { log: (...a) => console.log('    [Resolver]', ...a), error: (...a) => console.error('    [Resolver]', ...a) },
       util: runtime.util,
       runtime: runtime.runtime,
       ctx: runtime.ctx,
       context: runtime.ctx,
     };
 
-    try {
-      const vmContext = vm.createContext(sandbox);
+    const vmContext = vm.createContext(sandbox);
+    const wrapped = `(function(exports,module,util,runtime,ctx,context,console){${code}})(exports,module,util,runtime,ctx,context,console);`;
+    new vm.Script(wrapped, { filename: 'resolver.js' }).runInContext(vmContext);
 
-      // Wrap code in a function to allow exports.x = ... pattern
-      const wrappedCode = `
-        (function(exports, module, util, runtime, ctx, context, console) {
-          ${code}
-        })(exports, module, util, runtime, ctx, context, console);
-      `;
+    // Resolve exports
+    const resolved = (sandbox.module.exports && sandbox.module.exports !== moduleExports)
+      ? sandbox.module.exports
+      : sandbox.exports;
 
-      const script = new vm.Script(wrappedCode, { filename: 'resolver.js' });
-      script.runInContext(vmContext);
-
-      // Get the handler function - check module.exports first, then exports
-      const resolvedExports = (typeof sandbox.module.exports === 'function' || 
-        (sandbox.module.exports && sandbox.module.exports !== moduleExports))
-          ? sandbox.module.exports
-          : sandbox.exports;
-
-      const handler = resolvedExports[handlerName];
-
-      if (!handler || typeof handler !== 'function') {
-        const available = Object.keys(resolvedExports).join(', ') || 'none';
-        throw new Error(
-          `Handler '${handlerName}' not found or not a function in resolver. Available exports: ${available}`
-        );
-      }
-
-      // Execute the handler
-      const result = handler(runtime.ctx);
-      return result;
-    } catch (error) {
-      if (error.message.includes('Handler') || error.message.includes('not found')) throw error;
-      throw new Error(`JS resolver ${handlerName}() execution failed: ${error.message}`);
+    const handler = resolved[handlerName];
+    if (typeof handler !== 'function') {
+      const available = Object.keys(resolved).join(', ') || 'none';
+      throw new Error(`Handler '${handlerName}' not found. Available: ${available}`);
     }
+
+    return handler(runtime.ctx);
   }
 
-  /**
-   * Build the APPSYNC_JS runtime context with util helpers.
-   */
   buildRuntime(context) {
     const ctx = {
       args: context.arguments || {},
@@ -143,70 +86,47 @@ class JsResolver {
       },
       dynamodb: {
         toMapValues: (obj) => {
-          const result = {};
-          for (const [key, value] of Object.entries(obj)) {
-            if (typeof value === 'string') result[key] = { S: value };
-            else if (typeof value === 'number') result[key] = { N: String(value) };
-            else if (typeof value === 'boolean') result[key] = { BOOL: value };
-            else if (value === null) result[key] = { NULL: true };
-            else if (Array.isArray(value)) result[key] = { L: value };
-            else result[key] = { S: JSON.stringify(value) };
+          const r = {};
+          for (const [k, v] of Object.entries(obj)) {
+            if (typeof v === 'string') r[k] = { S: v };
+            else if (typeof v === 'number') r[k] = { N: String(v) };
+            else if (typeof v === 'boolean') r[k] = { BOOL: v };
+            else if (v === null) r[k] = { NULL: true };
+            else if (Array.isArray(v)) r[k] = { L: v };
+            else r[k] = { S: JSON.stringify(v) };
           }
-          return result;
+          return r;
         },
         fromMapValues: (obj) => {
-          const result = {};
-          for (const [key, attr] of Object.entries(obj)) {
-            if (attr.S !== undefined) result[key] = attr.S;
-            else if (attr.N !== undefined) result[key] = Number(attr.N);
-            else if (attr.BOOL !== undefined) result[key] = attr.BOOL;
-            else if (attr.NULL) result[key] = null;
-            else if (attr.L) result[key] = attr.L;
-            else if (attr.M) result[key] = attr.M;
+          const r = {};
+          for (const [k, a] of Object.entries(obj)) {
+            if (a.S !== undefined) r[k] = a.S;
+            else if (a.N !== undefined) r[k] = Number(a.N);
+            else if (a.BOOL !== undefined) r[k] = a.BOOL;
+            else if (a.NULL) r[k] = null;
+            else if (a.L) r[k] = a.L;
+            else if (a.M) r[k] = a.M;
           }
-          return result;
+          return r;
         },
       },
-      error: (message, type, data) => {
-        const err = new Error(message);
-        err.type = type;
-        err.data = data;
-        throw err;
-      },
-      appendError: (message, type) => {
-        console.warn(`[JS Runtime] AppendError: ${type}: ${message}`);
-      },
+      error: (message, type) => { const e = new Error(message); e.type = type; throw e; },
+      appendError: (msg, type) => console.warn(`[JS] AppendError: ${type}: ${msg}`),
       toJson: (obj) => JSON.stringify(obj),
       parseJson: (str) => JSON.parse(str),
-      urlEncode: (str) => encodeURIComponent(str),
-      urlDecode: (str) => decodeURIComponent(str),
-      base64Encode: (str) => Buffer.from(str).toString('base64'),
-      base64Decode: (str) => Buffer.from(str, 'base64').toString('utf-8'),
-      validate: (condition, message, type) => {
-        if (!condition) {
-          const err = new Error(message);
-          err.type = type || 'ValidationError';
-          throw err;
-        }
+      urlEncode: (s) => encodeURIComponent(s),
+      urlDecode: (s) => decodeURIComponent(s),
+      base64Encode: (s) => Buffer.from(s).toString('base64'),
+      base64Decode: (s) => Buffer.from(s, 'base64').toString('utf-8'),
+      validate: (cond, msg, type) => {
+        if (!cond) { const e = new Error(msg); e.type = type || 'ValidationError'; throw e; }
       },
     };
 
-    const runtime = {
-      earlyReturn: (result) => {
-        return { __earlyReturn: true, result };
-      },
-    };
+    const runtime = { earlyReturn: (result) => ({ __earlyReturn: true, result }) };
 
     return { ctx, util, runtime };
   }
-}
-
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }
 
 module.exports = { JsResolver };

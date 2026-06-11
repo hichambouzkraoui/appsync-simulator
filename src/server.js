@@ -9,43 +9,28 @@ const PORT = process.env.PORT || 4000;
 const CONFIG_DIR = process.env.CONFIG_DIR || './config';
 
 async function startServer() {
-  console.log('🚀 AppSync Local Simulator starting...');
-  console.log(`📁 Config directory: ${CONFIG_DIR}`);
-
-  // Load configuration
   const config = await loadConfig(CONFIG_DIR);
-  console.log(`📋 Schema loaded: ${config.schemaPath}`);
-  console.log(`📦 Datasources: ${Object.keys(config.datasources).join(', ')}`);
-  console.log(`🔗 Resolvers: ${Object.keys(config.resolvers).length} mappings`);
 
-  // Build the resolver executor
+  console.log('🚀 AppSync Local Simulator');
+  console.log(`   Schema: ${config.schemaPath}`);
+  console.log(`   Datasources: ${Object.keys(config.datasources).length}`);
+  console.log(`   Resolvers: ${Object.keys(config.resolvers).length} mappings`);
+
   const executor = createResolverExecutor(config);
-
-  // Build GraphQL resolvers from config
   const resolvers = buildResolvers(config, executor);
+  const schema = makeExecutableSchema({ typeDefs: config.schema, resolvers });
 
-  // Create executable schema
-  const schema = makeExecutableSchema({
-    typeDefs: config.schema,
-    resolvers,
-  });
-
-  // Set up Express
   const app = express();
   app.use(cors());
   app.use(express.json());
 
-  // GraphQL endpoint
   app.post('/graphql', async (req, res) => {
     const { query, variables, operationName } = req.body;
-
     const context = {
       identity: req.headers['x-appsync-identity']
         ? JSON.parse(req.headers['x-appsync-identity'])
         : { sub: 'local-user', username: 'localdev' },
-      request: {
-        headers: req.headers,
-      },
+      request: { headers: req.headers },
       stash: {},
     };
 
@@ -57,87 +42,62 @@ async function startServer() {
         operationName,
         contextValue: context,
       });
-
       res.json(result);
     } catch (error) {
-      console.error('GraphQL execution error:', error);
-      res.status(500).json({
-        errors: [{ message: error.message }],
-      });
+      res.status(500).json({ errors: [{ message: error.message }] });
     }
   });
 
-  // Introspection endpoint for tooling
   app.get('/graphql', (req, res) => {
-    res.json({
-      message: 'AppSync Local Simulator - Use POST for GraphQL queries',
-      endpoint: '/graphql',
-      docs: 'Send POST requests with { query, variables, operationName }',
-    });
+    res.json({ message: 'AppSync Local Simulator — POST to /graphql' });
   });
 
-  // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'healthy', resolvers: Object.keys(config.resolvers).length });
   });
 
   app.listen(PORT, () => {
-    console.log(`\n✅ AppSync Local Simulator running at http://localhost:${PORT}/graphql`);
-    console.log(`   Health check: http://localhost:${PORT}/health\n`);
+    console.log(`\n✅ http://localhost:${PORT}/graphql\n`);
   });
 
-  // Wait for all .NET Lambdas to be ready, then print summary
-  const dotnetDatasources = Object.values(executor.datasources || {})
-    .filter((ds) => ds.startPromise);
-  const allReady = dotnetDatasources.map((ds) => ds.startPromise);
+  // Print summary after all async datasources are ready
+  const pending = Object.values(executor.datasources)
+    .filter((ds) => ds.startPromise)
+    .map((ds) => ds.startPromise);
 
-  Promise.all(allReady).then(() => {
-    const summary = Object.entries(config.datasources).map(([name, ds]) => {
-      switch (ds.type) {
-        case 'AWS_LAMBDA':
-          return `   • ${name} (${ds.config.runtime} lambda)`;
-        case 'AMAZON_DYNAMODB':
-          return `   • ${name} (dynamodb → ${ds.config.tableName})`;
-        case 'NONE':
-          return `   • ${name} (none)`;
-        default:
-          return `   • ${name} (${ds.type})`;
-      }
-    });
-
-    console.log(`\n📦 All datasources ready:`);
-    summary.forEach((l) => console.log(l));
+  Promise.all(pending).then(() => {
+    const lines = Object.entries(config.datasources)
+      .filter(([, ds]) => ds.type !== 'NONE')
+      .map(([name, ds]) => {
+        if (ds.type === 'AWS_LAMBDA') return `   • ${name} (${ds.config.runtime})`;
+        if (ds.type === 'AMAZON_DYNAMODB') return `   • ${name} (dynamodb → ${ds.config.tableName})`;
+        return `   • ${name} (${ds.type})`;
+      });
+    console.log('📦 Datasources:');
+    lines.forEach((l) => console.log(l));
     console.log('');
   }).catch(() => {});
 }
 
 function buildResolvers(config, executor) {
-  const resolvers = { Query: {}, Mutation: {} };
+  const resolvers = {};
 
   for (const [fieldPath, resolverConfig] of Object.entries(config.resolvers)) {
     const [typeName, fieldName] = fieldPath.split('.');
+    if (!resolvers[typeName]) resolvers[typeName] = {};
 
-    if (!resolvers[typeName]) {
-      resolvers[typeName] = {};
-    }
-
-    resolvers[typeName][fieldName] = async (parent, args, context, info) => {
+    resolvers[typeName][fieldName] = async (parent, args, context) => {
       const appSyncContext = {
         arguments: args,
         source: parent,
         identity: context.identity,
         request: context.request,
         stash: context.stash,
-        info: {
-          fieldName,
-          parentTypeName: typeName,
-          selectionSetList: [],
-        },
+        info: { fieldName, parentTypeName: typeName, selectionSetList: [] },
       };
 
       try {
-        const result = await executor.execute(fieldPath, resolverConfig, appSyncContext);
-        return result;
+        return await executor.execute(fieldPath, resolverConfig, appSyncContext);
       } catch (error) {
         console.error(`[${fieldPath}] Resolver error:`, error.message);
         throw error;
@@ -149,6 +109,6 @@ function buildResolvers(config, executor) {
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start AppSync simulator:', err);
+  console.error('Failed to start:', err);
   process.exit(1);
 });
