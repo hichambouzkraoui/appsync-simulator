@@ -118,6 +118,44 @@ Set breakpoints in `Function.cs` — they will hit on the next request.
 
 Each .NET Lambda appears in the process picker by its `<AssemblyName>` from the `.csproj`.
 
+### JS Resolvers
+
+Resolvers run inside a sandboxed VM, so IDE breakpoints in resolver files won't bind directly. Three options:
+
+**Option 1 — `debugger` statement (recommended):**
+
+Add `debugger;` in your resolver. The Node.js inspector pauses there when attached:
+
+```javascript
+import { util } from '@aws-appsync/utils';
+
+export function request(ctx) {
+  debugger; // pauses here when debugger is attached
+  return {
+    operation: 'getProduct',
+    payload: { id: ctx.args.id },
+  };
+}
+```
+
+Run `npm run debug`, attach via "Attach JS Lambda", then send a request — execution pauses at `debugger`.
+
+**Option 2 — Console logging:**
+
+Resolvers have `console.log` available. Output appears in the server terminal prefixed with `[Resolver]`:
+
+```javascript
+export function request(ctx) {
+  console.log('args:', ctx.args);
+  console.log('identity:', ctx.identity);
+  return { ... };
+}
+```
+
+**Option 3 — Break in the resolver engine:**
+
+Set a breakpoint in `src/resolvers/js-resolver.js` on the `return handler(runtime.ctx)` line. You can inspect `runtime.ctx` (the full AppSync context) and step through the handler invocation.
+
 ## Resolver Types
 
 ### VTL Resolvers
