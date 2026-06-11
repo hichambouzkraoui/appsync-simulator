@@ -156,6 +156,19 @@ export function request(ctx) {
 
 Set a breakpoint in `src/resolvers/js-resolver.js` on the `return handler(runtime.ctx)` line. You can inspect `runtime.ctx` (the full AppSync context) and step through the handler invocation.
 
+### VTL Resolvers
+
+VTL templates can't be debugged with breakpoints — they're evaluated as text by the Velocity engine. Options:
+
+- **Check the terminal** — the simulator logs the evaluated JSON output of each template
+- **Break in the engine** — set a breakpoint in `src/resolvers/vtl-resolver.js` to inspect `vtlCtx`, `parsedRequest`, and `datasourceResult`
+- **Inspect values in VTL** — temporarily return intermediate data to see what's happening:
+  ```vtl
+  $util.toJson($ctx.args)
+  ```
+
+> **Note:** AWS is phasing out VTL in favor of the APPSYNC_JS runtime, which offers proper tooling and debuggability. Consider migrating VTL resolvers to JS resolvers for a better development experience.
+
 ## Resolver Types
 
 ### VTL Resolvers
