@@ -1,0 +1,6 @@
+{
+  "name": "product-catalog-lambda",
+  "version": "1.0.0",
+  "description": "Product catalog Lambda — get, list, search, create, update, delete products",
+  "main": "index.js"
+}

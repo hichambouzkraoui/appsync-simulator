@@ -1,14 +1,39 @@
 using System.Text.Json;
 using DotnetLambda;
 
-/// <summary>
-/// Entry point for the .NET Lambda.
-/// Reads the event from the LAMBDA_EVENT environment variable or stdin,
-/// invokes the handler, and writes the JSON response to stdout.
-/// </summary>
+var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+var writeOptions = new JsonSerializerOptions
+{
+    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+};
 
+// ── Persistent mode: read one JSON line per invocation, write one JSON line back ──
+if (Environment.GetEnvironmentVariable("LAMBDA_PERSISTENT") == "1")
+{
+    Console.WriteLine("__READY__");
+    Console.Out.Flush();
+
+    while (Console.ReadLine() is { } line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) continue;
+        try
+        {
+            var ev = JsonSerializer.Deserialize<AppSyncEvent>(line, options);
+            var result = ev != null ? Function.FunctionHandler(ev) : new OrderResponse { Error = "Deserialization failed" };
+            Console.WriteLine(JsonSerializer.Serialize(result, writeOptions));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OrderProcessor] Error: {ex.Message}");
+            Console.WriteLine(JsonSerializer.Serialize(new OrderResponse { Error = ex.Message }, writeOptions));
+        }
+        Console.Out.Flush();
+    }
+    return;
+}
+
+// ── Single-invocation mode (used by dotnet run without LAMBDA_PERSISTENT) ──
 var eventJson = Environment.GetEnvironmentVariable("LAMBDA_EVENT");
-
 if (string.IsNullOrEmpty(eventJson))
 {
     using var reader = new StreamReader(Console.OpenStandardInput());
@@ -17,41 +42,18 @@ if (string.IsNullOrEmpty(eventJson))
 
 if (string.IsNullOrEmpty(eventJson))
 {
-    Console.Error.WriteLine("[.NET Lambda] Error: No event data received");
-    var errorResponse = JsonSerializer.Serialize(new OrderResponse { Error = "No event data received" });
-    Console.WriteLine(errorResponse);
+    Console.WriteLine(JsonSerializer.Serialize(new OrderResponse { Error = "No event data received" }, writeOptions));
     return;
 }
 
 try
 {
-    var options = new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     var appSyncEvent = JsonSerializer.Deserialize<AppSyncEvent>(eventJson, options);
-
-    if (appSyncEvent == null)
-    {
-        Console.Error.WriteLine("[.NET Lambda] Error: Failed to deserialize event");
-        var errorResponse = JsonSerializer.Serialize(new OrderResponse { Error = "Failed to deserialize event" });
-        Console.WriteLine(errorResponse);
-        return;
-    }
-
-    var result = Function.FunctionHandler(appSyncEvent);
-
-    var responseJson = JsonSerializer.Serialize(result, new JsonSerializerOptions
-    {
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    });
-
-    Console.WriteLine(responseJson);
+    var result = appSyncEvent != null ? Function.FunctionHandler(appSyncEvent) : new OrderResponse { Error = "Deserialization failed" };
+    Console.WriteLine(JsonSerializer.Serialize(result, writeOptions));
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"[.NET Lambda] Unhandled exception: {ex.Message}");
-    var errorResponse = JsonSerializer.Serialize(new OrderResponse { Error = ex.Message });
-    Console.WriteLine(errorResponse);
+    Console.Error.WriteLine($"[OrderProcessor] Unhandled: {ex.Message}");
+    Console.WriteLine(JsonSerializer.Serialize(new OrderResponse { Error = ex.Message }, writeOptions));
 }

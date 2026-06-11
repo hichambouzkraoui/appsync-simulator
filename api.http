@@ -4,245 +4,232 @@ GET http://localhost:4000/health
 ###
 
 ### ============================================
-### MUTATIONS - VTL Resolvers + DynamoDB
+### PRODUCTS (JS Lambda)
 ### ============================================
 
-### Create User (VTL + DynamoDB)
+### List All Products
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation CreateUser($input: CreateUserInput!) { createUser(input: $input) { id name email createdAt } }",
+  "query": "{ listProducts { id name price category stock } }"
+}
+
+###
+
+### List Products by Category
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ listProducts(category: \"Electronics\") { id name price stock } }"
+}
+
+###
+
+### Search Products
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ searchProducts(query: \"shoes\") { id name price category } }"
+}
+
+###
+
+### Get Product by ID
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ getProduct(id: \"prod-001\") { id name description price category stock createdAt } }"
+}
+
+###
+
+### Create Product
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { createProduct(input: { name: \"Mechanical Keyboard\", description: \"RGB backlit\", price: 149.99, category: \"Electronics\", stock: 60 }) { id name price category stock createdAt } }"
+}
+
+###
+
+### Update Product
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { updateProduct(id: \"prod-001\", input: { price: 179.99, stock: 45 }) { id name price stock updatedAt } }"
+}
+
+###
+
+### Delete Product
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { deleteProduct(id: \"prod-004\") }"
+}
+
+###
+
+### ============================================
+### PAYMENTS (.NET Lambda)
+### ============================================
+
+### Charge Payment
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { chargePayment(input: { orderId: \"order-1\", amount: 199.99, currency: \"USD\", paymentMethod: \"card_visa_4242\" }) { id orderId amount currency status paymentMethod transactionId createdAt } }"
+}
+
+###
+
+### Get Payment (use ID from charge above)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetPayment($id: ID!) { getPayment(id: $id) { id orderId amount currency status transactionId createdAt refundedAt } }",
+  "variables": { "id": "REPLACE_WITH_PAYMENT_ID" }
+}
+
+###
+
+### List Payments for Order
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ listPayments(orderId: \"order-1\") { id amount currency status transactionId createdAt } }"
+}
+
+###
+
+### Refund Payment (full)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation RefundPayment($input: RefundPaymentInput!) { refundPayment(input: $input) { id amount status refundedAt refundReason } }",
   "variables": {
     "input": {
-      "name": "John Doe",
-      "email": "john@example.com"
+      "paymentId": "REPLACE_WITH_PAYMENT_ID",
+      "reason": "Customer requested refund"
     }
   }
 }
 
 ###
 
-### Delete User (VTL + DynamoDB)
+### Refund Payment (partial)
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation DeleteUser($id: ID!) { deleteUser(id: $id) }",
-  "variables": {
-    "id": "some-user-id"
-  }
-}
-
-###
-
-### ============================================
-### QUERIES - VTL Resolvers + DynamoDB
-### ============================================
-
-### Get User by ID (VTL + DynamoDB)
-POST http://localhost:4000/graphql
-Content-Type: application/json
-
-{
-  "query": "query GetUser($id: ID!) { getUser(id: $id) { id name email createdAt updatedAt } }",
-  "variables": {
-    "id": "some-user-id"
-  }
-}
-
-###
-
-### List All Users (VTL + DynamoDB)
-POST http://localhost:4000/graphql
-Content-Type: application/json
-
-{
-  "query": "query { listUsers { id name email createdAt } }"
-}
-
-###
-
-### ============================================
-### MUTATIONS - JS Resolvers + JS Lambda
-### ============================================
-
-### Create Order (JS Resolver + JS Lambda)
-POST http://localhost:4000/graphql
-Content-Type: application/json
-
-{
-  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId items { productId quantity price } total status createdAt } }",
+  "query": "mutation RefundPayment($input: RefundPaymentInput!) { refundPayment(input: $input) { id amount status refundedAt refundReason } }",
   "variables": {
     "input": {
-      "userId": "user-1",
-      "items": [
-        { "productId": "prod-001", "quantity": 2, "price": 29.99 },
-        { "productId": "prod-002", "quantity": 1, "price": 49.99 }
-      ]
+      "paymentId": "REPLACE_WITH_PAYMENT_ID",
+      "amount": 50.00,
+      "reason": "Partial refund - item returned"
     }
   }
 }
 
 ###
 
-### Create Order - Single Item
+### Charge Payment - Should Fail (amount > 10000)
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId total status createdAt } }",
-  "variables": {
-    "input": {
-      "userId": "user-2",
-      "items": [
-        { "productId": "prod-100", "quantity": 5, "price": 9.99 }
-      ]
-    }
-  }
+  "query": "mutation { chargePayment(input: { orderId: \"order-2\", amount: 15000, currency: \"USD\", paymentMethod: \"card_visa\" }) { id status } }"
 }
 
 ###
 
 ### ============================================
-### MUTATIONS - JS Resolvers + .NET Lambda
+### ORDERS (JS Lambda + .NET Lambda)
 ### ============================================
 
-### Process Order (JS Resolver + .NET Lambda)
+### Create Order (JS Lambda)
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation ProcessOrder($id: ID!) { processOrder(id: $id) { id status createdAt } }",
-  "variables": {
-    "id": "order-123"
-  }
+  "query": "mutation { createOrder(input: { userId: \"user-1\", items: [{ productId: \"prod-001\", quantity: 1, price: 199.99 }, { productId: \"prod-003\", quantity: 2, price: 49.99 }] }) { id userId items { productId quantity price } total status createdAt } }"
+}
+
+###
+
+### Process Order (.NET Lambda)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { processOrder(id: \"order-1\") { id status createdAt } }"
 }
 
 ###
 
 ### ============================================
-### MUTATIONS - JS Resolvers + NONE Datasource
+### USERS (VTL + DynamoDB / in-memory fallback)
 ### ============================================
 
-### Update User (JS Resolver + NONE datasource)
+### Create User
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name email updatedAt } }",
-  "variables": {
-    "id": "user-1",
-    "input": {
-      "name": "Jane Doe",
-      "email": "jane@example.com"
-    }
-  }
+  "query": "mutation { createUser(input: { name: \"Alice Smith\", email: \"alice@example.com\" }) { id name email createdAt } }"
 }
 
 ###
 
-### Update User - Name Only
+### List Users
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name updatedAt } }",
-  "variables": {
-    "id": "user-1",
-    "input": {
-      "name": "Updated Name"
-    }
-  }
+  "query": "{ listUsers { id name email createdAt } }"
 }
 
 ###
 
-### ============================================
-### QUERIES - JS Resolvers + DynamoDB
-### ============================================
-
-### Get Order by ID (JS Resolver + DynamoDB)
+### Get User
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "query GetOrder($id: ID!) { getOrder(id: $id) { id userId items { productId quantity price } total status createdAt } }",
-  "variables": {
-    "id": "order-123"
-  }
+  "query": "query GetUser($id: ID!) { getUser(id: $id) { id name email createdAt } }",
+  "variables": { "id": "REPLACE_WITH_USER_ID" }
 }
 
 ###
 
-### List Orders by User (JS Resolver + DynamoDB)
+### Update User (NONE datasource)
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "query ListOrders($userId: ID!) { listOrders(userId: $userId) { id userId total status createdAt } }",
-  "variables": {
-    "userId": "user-1"
-  }
+  "query": "mutation { updateUser(id: \"user-1\", input: { name: \"Alice Updated\", email: \"alice.new@example.com\" }) { id name email updatedAt } }"
 }
 
 ###
 
-### ============================================
-### ERROR CASES / VALIDATION
-### ============================================
-
-### Update User - Invalid Email (should return validation error)
+### Delete User
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "mutation UpdateUser($id: ID!, $input: UpdateUserInput!) { updateUser(id: $id, input: $input) { id name email } }",
-  "variables": {
-    "id": "user-1",
-    "input": {
-      "email": "not-an-email"
-    }
-  }
-}
-
-###
-
-### Create Order - Empty Items (should return error from Lambda)
-POST http://localhost:4000/graphql
-Content-Type: application/json
-
-{
-  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id status } }",
-  "variables": {
-    "input": {
-      "userId": "user-1",
-      "items": []
-    }
-  }
-}
-
-###
-
-### ============================================
-### WITH CUSTOM IDENTITY HEADER
-### ============================================
-
-### Create Order with custom identity
-POST http://localhost:4000/graphql
-Content-Type: application/json
-X-AppSync-Identity: {"sub": "abc-123", "username": "admin-user"}
-
-{
-  "query": "mutation CreateOrder($input: CreateOrderInput!) { createOrder(input: $input) { id userId total status } }",
-  "variables": {
-    "input": {
-      "userId": "user-admin",
-      "items": [
-        { "productId": "premium-001", "quantity": 1, "price": 199.99 }
-      ]
-    }
-  }
+  "query": "mutation { deleteUser(id: \"REPLACE_WITH_USER_ID\") }"
 }
 
 ###
@@ -251,22 +238,12 @@ X-AppSync-Identity: {"sub": "abc-123", "username": "admin-user"}
 ### INTROSPECTION
 ### ============================================
 
-### Schema Introspection
+### Full Schema Introspection
 POST http://localhost:4000/graphql
 Content-Type: application/json
 
 {
-  "query": "{ __schema { queryType { name } mutationType { name } types { name kind } } }"
-}
-
-###
-
-### Type Details - User
-POST http://localhost:4000/graphql
-Content-Type: application/json
-
-{
-  "query": "{ __type(name: \"User\") { name fields { name type { name kind ofType { name } } } } }"
+  "query": "{ __schema { queryType { name fields { name } } mutationType { name fields { name } } } }"
 }
 
 ###

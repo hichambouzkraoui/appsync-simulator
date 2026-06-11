@@ -1,17 +1,20 @@
 const { execSync, spawn } = require('child_process');
-const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
 /**
  * .NET Lambda datasource.
  *
- * Normal mode: spawns `dotnet run` per invocation.
+ * Runs each Lambda as a persistent process using a stdin/stdout JSON line protocol.
+ * State is preserved across invocations, just like JS Lambdas loaded via require().
  *
- * Debug mode (DOTNET_LAMBDA_DEBUG_PORT env var):
- *   Waits for an external .NET debug server (launched by the IDE with debugger
- *   attached) and routes all invocations to it via HTTP.
- *   The IDE compound config handles launching both processes.
+ * Each Lambda's .NET project must support persistent mode (LAMBDA_PERSISTENT=1):
+ *   - Print __READY__ to stdout on startup
+ *   - Read one JSON event per line from stdin
+ *   - Write one JSON response per line to stdout
+ *
+ * The process is launched using the compiled binary directly so the OS process name
+ * matches the assembly name (visible in the IDE debugger process picker).
  */
 class LambdaDotnetDatasource {
   constructor(name, config) {
@@ -19,141 +22,96 @@ class LambdaDotnetDatasource {
     this.projectPath = config.projectPath;
     this.assembly = config.assembly || path.basename(config.projectPath);
     this.handler = config.handler;
-    this.built = false;
-    this.debugPort = process.env.DOTNET_LAMBDA_DEBUG_PORT || null;
-    this.debugReady = null;
+
+    this.process = null;
+    this.startPromise = null;
+    this.pending = null;
+    this.buffer = '';
 
     console.log(`  [Lambda/.NET] Initialized: ${name} → ${this.projectPath}`);
-
-    if (this.debugPort) {
-      console.log(`  [Lambda/.NET] 🐛 Debug mode on port ${this.debugPort}`);
-      this.debugConnected = false;
-      this.debugReady = this.launchAndWait();
-    }
+    this.startPromise = this.launch();
   }
 
-  /**
-   * Build, launch, and wait for the debug host to be ready.
-   */
-  async launchAndWait() {
-    const hostDir = path.resolve(__dirname, '..', 'debug-host');
+  async launch() {
+    const projectDir = path.resolve(this.projectPath);
 
-    // Build
-    console.log(`  [Lambda/.NET] Building debug host...`);
+    // Always build Debug for local dev — enables breakpoints and PDB symbols
+    console.log(`  [Lambda/.NET] Building ${this.name}...`);
     try {
       execSync('dotnet build -c Debug --nologo -v quiet', {
-        cwd: hostDir,
-        stdio: 'pipe',
-        timeout: 60000,
-      });
-    } catch (error) {
-      const output = error.stdout?.toString() || error.stderr?.toString() || error.message;
-      console.error(`  [Lambda/.NET] Build failed:`, output);
-      this.debugPort = null;
-      return;
-    }
-
-    // Launch
-    const binaryPath = path.join(hostDir, 'bin', 'Debug', 'net8.0', 'DebugHost');
-    this.debugProcess = spawn(binaryPath, [], {
-      cwd: hostDir,
-      env: {
-        ...process.env,
-        DOTNET_ROOT: '/usr/local/share/dotnet',
-        LAMBDA_DEBUG_PORT: this.debugPort,
-        ASPNETCORE_URLS: `http://localhost:${this.debugPort}`,
-        DEBUGHOST_PID_FILE: path.resolve('.debughost.pid'),
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    this.debugProcess.stdout.on('data', (data) => {
-      console.log(`  [Lambda/.NET/host] ${data.toString().trim()}`);
-    });
-    this.debugProcess.stderr.on('data', (data) => {
-      const msg = data.toString().trim();
-      if (msg) console.log(`  [Lambda/.NET/host] ${msg}`);
-    });
-    this.debugProcess.on('close', (code) => {
-      console.log(`  [Lambda/.NET] Debug host exited (code: ${code})`);
-      this.debugProcess = null;
-      this.debugConnected = false;
-    });
-
-    // Wait for health
-    await this.waitForReady();
-    this.debugConnected = true;
-    // Print PID so user can attach debugger
-    console.log(`  [Lambda/.NET] 🐛 Debug host PID: ${this.debugProcess.pid}`);
-    console.log(`  [Lambda/.NET]    Attach debugger: Run & Debug → "Attach to .NET Lambda"`);
-  }
-
-  /**
-   * Poll the health endpoint until the debug server is ready.
-   */
-  waitForReady() {
-    return new Promise((resolve, reject) => {
-      let attempts = 0;
-      const maxAttempts = 60; // 30 seconds
-
-      const check = () => {
-        attempts++;
-        const req = http.get(`http://localhost:${this.debugPort}/health`, (res) => {
-          if (res.statusCode === 200) {
-            console.log(`  [Lambda/.NET] 🐛 Debug server ready on port ${this.debugPort}`);
-            resolve();
-          } else if (attempts < maxAttempts) {
-            setTimeout(check, 500);
-          } else {
-            reject(new Error('Debug host did not become ready'));
-          }
-        });
-        req.on('error', () => {
-          if (attempts < maxAttempts) {
-            setTimeout(check, 500);
-          } else {
-            reject(new Error(`Debug host not reachable on port ${this.debugPort}`));
-          }
-        });
-        req.end();
-      };
-
-      check();
-    });
-  }
-
-  /**
-   * Ensure the .NET project is built (normal mode only).
-   */
-  ensureBuilt() {
-    if (this.built) return;
-
-    const projectDir = path.resolve(this.projectPath);
-    const csprojFiles = fs.readdirSync(projectDir).filter(f => f.endsWith('.csproj'));
-
-    if (csprojFiles.length === 0) {
-      throw new Error(`No .csproj file found in ${projectDir}`);
-    }
-
-    console.log(`  [Lambda/.NET] Building ${this.name}...`);
-
-    try {
-      execSync('dotnet build -c Release --nologo -v quiet', {
         cwd: projectDir,
         stdio: 'pipe',
         timeout: 60000,
       });
-      this.built = true;
-      console.log(`  [Lambda/.NET] Build successful`);
-    } catch (error) {
-      const output = error.stdout?.toString() || error.stderr?.toString() || error.message;
-      throw new Error(`Failed to build .NET Lambda: ${output}`);
+    } catch (err) {
+      const out = err.stdout?.toString() || err.stderr?.toString() || err.message;
+      throw new Error(`Failed to build ${this.name}: ${out}`);
     }
+
+    // Launch the compiled binary directly (process name = assembly name)
+    const binaryPath = this.findBinary(projectDir);
+    console.log(`  [Lambda/.NET] Launching ${path.basename(binaryPath)}`);
+
+    this.process = spawn(binaryPath, [], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        DOTNET_ROOT: '/usr/local/share/dotnet',
+        AWS_LAMBDA_FUNCTION_NAME: this.name,
+        AWS_REGION: 'us-east-1',
+        LAMBDA_PERSISTENT: '1',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    this.process.stderr.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) console.log(`  [Lambda/.NET/${this.name}] ${msg}`);
+    });
+
+    this.process.stdout.on('data', (data) => {
+      this.buffer += data.toString();
+      let nl;
+      while ((nl = this.buffer.indexOf('\n')) !== -1) {
+        const line = this.buffer.slice(0, nl).trim();
+        this.buffer = this.buffer.slice(nl + 1);
+        if (line === '__READY__') continue;
+        if (line && this.pending) {
+          const { resolve } = this.pending;
+          this.pending = null;
+          resolve(line);
+        }
+      }
+    });
+
+    this.process.on('close', (code) => {
+      console.log(`  [Lambda/.NET] ${this.name} exited (code: ${code})`);
+      this.process = null;
+      if (this.pending) {
+        this.pending.reject(new Error(`${this.name} process exited (code ${code})`));
+        this.pending = null;
+      }
+    });
+
+    // Wait for __READY__ signal
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`${this.name} did not become ready in 30s`)),
+        30000
+      );
+      const onData = (data) => {
+        if (data.toString().includes('__READY__')) {
+          this.process.stdout.removeListener('data', onData);
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+      this.process.stdout.on('data', onData);
+    });
+
+    console.log(`  [Lambda/.NET] ${this.name} ready (PID: ${this.process.pid})`);
   }
 
-  /**
-   * Invoke the .NET Lambda function.
-   */
   async invoke(request, context) {
     const event = {
       typeName: context.info?.parentTypeName || 'Mutation',
@@ -169,121 +127,66 @@ class LambdaDotnetDatasource {
     console.log(`  [Lambda/.NET] Invoking ${this.name} (${context.info?.fieldName})`);
 
     try {
-      let result;
+      if (this.startPromise) await this.startPromise;
 
-      if (this.debugPort) {
-        if (this.debugReady) await this.debugReady;
-        result = await this.invokeViaHttp(eventJson);
-      } else {
-        this.ensureBuilt();
-        result = await this.executeDotnet(path.resolve(this.projectPath), eventJson);
-      }
-
-      console.log(`  [Lambda/.NET] ${this.name} returned:`, result.substring(0, 200));
-
+      const raw = await this.sendEvent(eventJson);
+      console.log(`  [Lambda/.NET] ${this.name} returned:`, raw.substring(0, 200));
       try {
-        return JSON.parse(result);
+        return JSON.parse(raw);
       } catch {
-        return result;
+        return raw;
       }
-    } catch (error) {
-      console.error(`  [Lambda/.NET] ${this.name} error:`, error.message);
-      throw new Error(`Lambda .NET invocation failed: ${error.message}`);
+    } catch (err) {
+      console.error(`  [Lambda/.NET] ${this.name} error:`, err.message);
+      throw new Error(`Lambda .NET invocation failed: ${err.message}`);
     }
   }
 
-  /**
-   * Send event to the debug HTTP server via POST.
-   * Timeout is long (120s) because the user may be paused at a breakpoint.
-   */
-  invokeViaHttp(eventJson) {
+  sendEvent(eventJson) {
     return new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'localhost',
-        port: parseInt(this.debugPort),
-        path: '/invoke',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(eventJson),
-        },
+      if (!this.process) {
+        reject(new Error(`${this.name} process is not running`));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        this.pending = null;
+        reject(new Error(`${this.name} timed out after 30s`));
+      }, 30000);
+
+      this.pending = {
+        resolve: (v) => { clearTimeout(timeout); resolve(v); },
+        reject: (e) => { clearTimeout(timeout); reject(e); },
       };
 
-      const req = http.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            resolve(data);
-          } else {
-            reject(new Error(`Debug server returned ${res.statusCode}: ${data}`));
-          }
-        });
-      });
-
-      req.on('error', (error) => {
-        if (error.code === 'ECONNREFUSED') {
-          reject(new Error(`.NET debug server disconnected on port ${this.debugPort}.`));
-        } else {
-          reject(error);
-        }
-      });
-
-      req.setTimeout(120000, () => {
-        req.destroy();
-        reject(new Error('Request timed out (120s) — still paused at breakpoint?'));
-      });
-
-      req.write(eventJson);
-      req.end();
+      // Send event as a single JSON line
+      this.process.stdin.write(eventJson.replace(/\n/g, ' ') + '\n');
     });
   }
 
   /**
-   * Normal mode: spawn dotnet run per invocation.
+   * Find the compiled binary in bin/Debug/net{version}/{assembly}
    */
-  executeDotnet(projectDir, eventJson) {
-    return new Promise((resolve, reject) => {
-      const proc = spawn('dotnet', ['run', '--no-build', '-c', 'Release'], {
-        cwd: projectDir,
-        env: {
-          ...process.env,
-          LAMBDA_EVENT: eventJson,
-          AWS_LAMBDA_FUNCTION_NAME: this.name,
-          AWS_REGION: 'us-east-1',
-        },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+  findBinary(projectDir) {
+    const binDir = path.join(projectDir, 'bin', 'Debug');
+    if (!fs.existsSync(binDir)) {
+      throw new Error(`Build output not found: ${binDir}`);
+    }
 
-      let stdout = '';
-      let stderr = '';
+    const frameworks = fs.readdirSync(binDir).filter((d) =>
+      fs.statSync(path.join(binDir, d)).isDirectory() && d.startsWith('net')
+    );
 
-      proc.stdout.on('data', (data) => { stdout += data.toString(); });
-      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+    if (frameworks.length === 0) {
+      throw new Error(`No framework folder found in ${binDir}`);
+    }
 
-      proc.stdin.write(eventJson);
-      proc.stdin.end();
+    const binaryPath = path.join(binDir, frameworks[0], this.assembly);
+    if (!fs.existsSync(binaryPath)) {
+      throw new Error(`Binary not found: ${binaryPath}`);
+    }
 
-      const timeout = setTimeout(() => {
-        proc.kill();
-        reject(new Error('Lambda .NET execution timed out (30s)'));
-      }, 30000);
-
-      proc.on('close', (code) => {
-        clearTimeout(timeout);
-        if (code !== 0) {
-          reject(new Error(`Process exited with code ${code}: ${stderr}`));
-          return;
-        }
-        const lines = stdout.trim().split('\n');
-        resolve(lines[lines.length - 1]);
-      });
-
-      proc.on('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-    });
+    return binaryPath;
   }
 }
 

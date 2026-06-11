@@ -5,22 +5,17 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "debug": "rm -f .debughost.pid && DOTNET_LAMBDA_DEBUG_PORT=5050 node --inspect src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node --test tests/"
+    "debug": "node --inspect src/server.js",
+    "dev": "node --watch src/server.js"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "cors": "^2.8.5",
-    "graphql": "^16.9.0",
-    "@graphql-tools/schema": "^10.0.6",
-    "@graphql-tools/utils": "^10.5.5",
-    "graphql-tag": "^2.12.6",
     "@aws-sdk/client-dynamodb": "^3.650.0",
     "@aws-sdk/lib-dynamodb": "^3.650.0",
+    "@graphql-tools/schema": "^10.0.6",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "graphql": "^16.9.0",
     "js-yaml": "^4.1.0",
-    "glob": "^10.4.5",
-    "chokidar": "^3.6.0",
     "velocityjs": "^2.0.6"
   }
 }

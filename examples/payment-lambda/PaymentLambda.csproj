@@ -5,14 +5,13 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>DotnetLambda</RootNamespace>
-    <AssemblyName>OrderProcessorLambda</AssemblyName>
+    <RootNamespace>PaymentLambda</RootNamespace>
+    <AssemblyName>PaymentServiceLambda</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Amazon.Lambda.Core" Version="2.2.0" />
     <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.1" />
-    <PackageReference Include="System.Text.Json" Version="8.0.4" />
   </ItemGroup>
 
 </Project>

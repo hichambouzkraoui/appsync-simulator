@@ -10,9 +10,7 @@ const { NoneDatasource } = require('./datasources/none');
  * resolver type (VTL or JS) and datasource.
  */
 function createResolverExecutor(config) {
-  // Initialize datasource instances
   const datasourceInstances = {};
-  const readyPromises = [];
 
   for (const [name, dsConfig] of Object.entries(config.datasources)) {
     switch (dsConfig.type) {
@@ -21,9 +19,7 @@ function createResolverExecutor(config) {
         break;
       case 'AWS_LAMBDA':
         if (dsConfig.config.runtime === 'dotnet') {
-          const ds = new LambdaDotnetDatasource(name, dsConfig.config);
-          datasourceInstances[name] = ds;
-          if (ds.debugReady) readyPromises.push(ds.debugReady);
+          datasourceInstances[name] = new LambdaDotnetDatasource(name, dsConfig.config);
         } else {
           datasourceInstances[name] = new LambdaJsDatasource(name, dsConfig.config);
         }
@@ -37,19 +33,10 @@ function createResolverExecutor(config) {
     }
   }
 
-  // Initialize resolver engines
   const vtlResolver = new VtlResolver();
   const jsResolver = new JsResolver();
 
   return {
-    /**
-     * Wait for all datasources to be ready (e.g. debug hosts starting up).
-     */
-    ready: () => Promise.all(readyPromises),
-
-    /**
-     * Execute a resolver for a given field.
-     */
     async execute(fieldPath, resolverConfig, context) {
       const datasource = datasourceInstances[resolverConfig.datasource];
       if (!datasource) {

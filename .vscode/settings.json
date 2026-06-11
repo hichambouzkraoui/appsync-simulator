@@ -1,0 +1,7 @@
+{
+  "dotnet.dotnetPath": "/usr/local/share/dotnet/dotnet",
+  "terminal.integrated.env.osx": {
+    "PATH": "/usr/local/share/dotnet:${env:HOME}/.nvm/versions/node/v18.12.0/bin:${env:PATH}",
+    "DOTNET_ROOT": "/usr/local/share/dotnet"
+  }
+}

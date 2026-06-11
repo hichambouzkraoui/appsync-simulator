@@ -4,7 +4,6 @@ schema: schema.graphql
 
 # Datasource definitions
 datasources:
-  # DynamoDB datasource for user CRUD operations
   UsersTable:
     type: AMAZON_DYNAMODB
     config:
@@ -12,7 +11,6 @@ datasources:
       endpoint: http://localhost:8000
       region: us-east-1
 
-  # DynamoDB datasource for orders
   OrdersTable:
     type: AMAZON_DYNAMODB
     config:
@@ -20,7 +18,7 @@ datasources:
       endpoint: http://localhost:8000
       region: us-east-1
 
-  # JavaScript Lambda datasource
+  # JS Lambda — order operations
   UserServiceLambda:
     type: AWS_LAMBDA
     config:
@@ -28,22 +26,38 @@ datasources:
       functionPath: ../examples/js-lambda/index.js
       handler: handler
 
-  # .NET Lambda datasource
+  # JS Lambda — product catalog
+  ProductCatalogLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: nodejs
+      functionPath: ../examples/product-catalog-lambda/index.js
+      handler: handler
+
+  # .NET Lambda — order processor
   OrderProcessorLambda:
     type: AWS_LAMBDA
     config:
       runtime: dotnet
       projectPath: ../examples/dotnet-lambda
-      assembly: DotnetLambda
+      assembly: OrderProcessorLambda
       handler: DotnetLambda::DotnetLambda.Function::FunctionHandler
 
-  # NONE datasource (local resolution)
+  # .NET Lambda — payment service
+  PaymentServiceLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: dotnet
+      projectPath: ../examples/payment-lambda
+      assembly: PaymentServiceLambda
+      handler: PaymentLambda::PaymentLambda.Function::FunctionHandler
+
   LocalResolver:
     type: NONE
 
 # Resolver mappings
 resolvers:
-  # VTL resolvers for DynamoDB operations
+  # ── Users (VTL + DynamoDB) ──────────────────────────────────────────────────
   Query.getUser:
     datasource: UsersTable
     type: vtl
@@ -68,7 +82,12 @@ resolvers:
     requestTemplate: ../resolvers/vtl/deleteUser.request.vtl
     responseTemplate: ../resolvers/vtl/deleteUser.response.vtl
 
-  # JavaScript resolvers
+  Mutation.updateUser:
+    datasource: LocalResolver
+    type: js
+    code: ../resolvers/js/updateUser.js
+
+  # ── Orders (JS + Lambda/DynamoDB) ───────────────────────────────────────────
   Query.getOrder:
     datasource: OrdersTable
     type: js
@@ -84,13 +103,59 @@ resolvers:
     type: js
     code: ../resolvers/js/createOrder.js
 
-  # .NET Lambda resolver
   Mutation.processOrder:
     datasource: OrderProcessorLambda
     type: js
     code: ../resolvers/js/processOrder.js
 
-  Mutation.updateUser:
-    datasource: LocalResolver
+  # ── Products (JS Lambda) ─────────────────────────────────────────────────────
+  Query.getProduct:
+    datasource: ProductCatalogLambda
     type: js
-    code: ../resolvers/js/updateUser.js
+    code: ../resolvers/js/getProduct.js
+
+  Query.listProducts:
+    datasource: ProductCatalogLambda
+    type: js
+    code: ../resolvers/js/listProducts.js
+
+  Query.searchProducts:
+    datasource: ProductCatalogLambda
+    type: js
+    code: ../resolvers/js/searchProducts.js
+
+  Mutation.createProduct:
+    datasource: ProductCatalogLambda
+    type: js
+    code: ../resolvers/js/createProduct.js
+
+  Mutation.updateProduct:
+    datasource: ProductCatalogLambda
+    type: js
+    code: ../resolvers/js/updateProduct.js
+
+  Mutation.deleteProduct:
+    datasource: ProductCatalogLambda
+    type: js
+    code: ../resolvers/js/deleteProduct.js
+
+  # ── Payments (.NET Lambda) ───────────────────────────────────────────────────
+  Query.getPayment:
+    datasource: PaymentServiceLambda
+    type: js
+    code: ../resolvers/js/getPayment.js
+
+  Query.listPayments:
+    datasource: PaymentServiceLambda
+    type: js
+    code: ../resolvers/js/listPayments.js
+
+  Mutation.chargePayment:
+    datasource: PaymentServiceLambda
+    type: js
+    code: ../resolvers/js/chargePayment.js
+
+  Mutation.refundPayment:
+    datasource: PaymentServiceLambda
+    type: js
+    code: ../resolvers/js/refundPayment.js

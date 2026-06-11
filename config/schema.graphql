@@ -1,17 +1,43 @@
 type Query {
+  # Users
   getUser(id: ID!): User
   listUsers: [User!]!
+
+  # Orders
   getOrder(id: ID!): Order
   listOrders(userId: ID!): [Order!]!
+
+  # Products
+  getProduct(id: ID!): Product
+  listProducts(category: String, limit: Int): [Product!]!
+  searchProducts(query: String!, limit: Int): [Product!]!
+
+  # Payments
+  getPayment(id: ID!): Payment
+  listPayments(orderId: ID!): [Payment!]!
 }
 
 type Mutation {
+  # Users
   createUser(input: CreateUserInput!): User!
   updateUser(id: ID!, input: UpdateUserInput!): User
   deleteUser(id: ID!): Boolean!
+
+  # Orders
   createOrder(input: CreateOrderInput!): Order!
   processOrder(id: ID!): Order!
+
+  # Products
+  createProduct(input: CreateProductInput!): Product!
+  updateProduct(id: ID!, input: UpdateProductInput!): Product!
+  deleteProduct(id: ID!): Boolean!
+
+  # Payments
+  chargePayment(input: ChargePaymentInput!): Payment!
+  refundPayment(input: RefundPaymentInput!): Payment!
 }
+
+# ─── Users ────────────────────────────────────────────────────────────────────
 
 input CreateUserInput {
   name: String!
@@ -23,6 +49,16 @@ input UpdateUserInput {
   email: String
 }
 
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  createdAt: String!
+  updatedAt: String
+}
+
+# ─── Orders ───────────────────────────────────────────────────────────────────
+
 input CreateOrderInput {
   userId: ID!
   items: [OrderItemInput!]!
@@ -32,14 +68,6 @@ input OrderItemInput {
   productId: String!
   quantity: Int!
   price: Float!
-}
-
-type User {
-  id: ID!
-  name: String!
-  email: String!
-  createdAt: String!
-  updatedAt: String
 }
 
 type Order {
@@ -63,4 +91,69 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+}
+
+# ─── Products ─────────────────────────────────────────────────────────────────
+
+input CreateProductInput {
+  name: String!
+  description: String
+  price: Float!
+  category: String!
+  stock: Int!
+}
+
+input UpdateProductInput {
+  name: String
+  description: String
+  price: Float
+  category: String
+  stock: Int
+}
+
+type Product {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  category: String!
+  stock: Int!
+  createdAt: String!
+  updatedAt: String
+}
+
+# ─── Payments ─────────────────────────────────────────────────────────────────
+
+input ChargePaymentInput {
+  orderId: ID!
+  amount: Float!
+  currency: String!
+  paymentMethod: String!
+}
+
+input RefundPaymentInput {
+  paymentId: ID!
+  amount: Float
+  reason: String
+}
+
+type Payment {
+  id: ID!
+  orderId: ID!
+  amount: Float!
+  currency: String!
+  status: PaymentStatus!
+  paymentMethod: String!
+  transactionId: String
+  createdAt: String!
+  refundedAt: String
+  refundReason: String
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
