@@ -1,12 +1,6 @@
-/**
- * APPSYNC_JS resolver for listing orders by userId.
- * Demonstrates a DynamoDB Query with key condition expression.
- */
+import { util } from '@aws-appsync/utils';
 
-/**
- * Request handler - builds a DynamoDB Query request.
- */
-exports.request = function request(ctx) {
+export function request(ctx) {
   return {
     operation: 'Query',
     index: 'userId-index',
@@ -16,14 +10,11 @@ exports.request = function request(ctx) {
     },
     limit: 50,
   };
-};
+}
 
-/**
- * Response handler - returns the list of orders.
- */
-exports.response = function response(ctx) {
+export function response(ctx) {
   if (ctx.error) {
     util.error(ctx.error.message, ctx.error.type);
   }
   return ctx.result || [];
-};
+}

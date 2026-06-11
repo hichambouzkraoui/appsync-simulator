@@ -1,14 +1,6 @@
-/**
- * APPSYNC_JS resolver for updating a user.
- * Uses the NONE datasource - demonstrates local resolution without a backend.
- * In a real app, you'd use a DynamoDB datasource, but this shows
- * how NONE datasources work for computed/mock data.
- */
+import { util } from '@aws-appsync/utils';
 
-/**
- * Request handler - performs validation and builds the update payload.
- */
-exports.request = function request(ctx) {
+export function request(ctx) {
   const { id } = ctx.args;
   const input = ctx.args.input;
 
@@ -27,13 +19,8 @@ exports.request = function request(ctx) {
     ...input,
     updatedAt: util.time.nowISO8601(),
   };
-};
+}
 
-/**
- * Response handler - returns the result from the NONE datasource.
- * Since NONE datasource passes the request through as the result,
- * ctx.result contains what we returned from request().
- */
-exports.response = function response(ctx) {
+export function response(ctx) {
   return ctx.result;
-};
+}

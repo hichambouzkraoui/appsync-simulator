@@ -1,4 +1,6 @@
-exports.request = function request(ctx) {
+import { util } from '@aws-appsync/utils';
+
+export function request(ctx) {
   return {
     operation: 'searchProducts',
     payload: {
@@ -6,10 +8,10 @@ exports.request = function request(ctx) {
       limit: ctx.args.limit || 20,
     },
   };
-};
+}
 
-exports.response = function response(ctx) {
+export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
   if (ctx.result?.error) util.error(ctx.result.error, 'SearchError');
   return ctx.result || [];
-};
+}

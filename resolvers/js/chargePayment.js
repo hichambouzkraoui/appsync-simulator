@@ -1,4 +1,6 @@
-exports.request = function request(ctx) {
+import { util } from '@aws-appsync/utils';
+
+export function request(ctx) {
   return {
     operation: 'chargePayment',
     payload: {
@@ -8,11 +10,11 @@ exports.request = function request(ctx) {
       paymentMethod: ctx.args.input.paymentMethod,
     },
   };
-};
+}
 
-exports.response = function response(ctx) {
+export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
   const result = ctx.result;
   if (result?.error) util.error(result.error, 'PaymentError');
   return result;
-};
+}

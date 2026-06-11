@@ -1,13 +1,6 @@
-/**
- * APPSYNC_JS resolver for creating an order.
- * This resolver invokes a JS Lambda datasource that handles order creation logic.
- */
+import { util } from '@aws-appsync/utils';
 
-/**
- * Request handler - prepares the payload for the Lambda function.
- * The Lambda will validate the user, calculate totals, and create the order.
- */
-exports.request = function request(ctx) {
+export function request(ctx) {
   const { userId, items } = ctx.args.input;
 
   // Calculate the order total
@@ -23,12 +16,9 @@ exports.request = function request(ctx) {
       createdAt: util.time.nowISO8601(),
     },
   };
-};
+}
 
-/**
- * Response handler - returns the Lambda result as the order.
- */
-exports.response = function response(ctx) {
+export function response(ctx) {
   if (ctx.error) {
     util.error(ctx.error.message, ctx.error.type);
   }
@@ -41,4 +31,4 @@ exports.response = function response(ctx) {
   }
 
   return result;
-};
+}

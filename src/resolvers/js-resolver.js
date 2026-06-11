@@ -4,11 +4,21 @@ const path = require('path');
 const { generateId } = require('../utils');
 
 /**
- * APPSYNC_JS resolver engine — executes JS resolvers with request()/response() handlers.
+ * APPSYNC_JS resolver engine.
+ *
+ * Supports both resolver styles:
+ *   1. CommonJS:  exports.request = function(ctx) { ... }
+ *   2. AppSync native (ESM-like):
+ *        import { util } from '@aws-appsync/utils';
+ *        export function request(ctx) { ... }
+ *
+ * The @aws-appsync/utils import is stripped and replaced with the simulator's
+ * built-in util/runtime globals (same as the real APPSYNC_JS runtime does).
  */
 class JsResolver {
   async execute(resolverConfig, datasource, context) {
-    const code = this.loadCode(resolverConfig.code);
+    const rawCode = this.loadCode(resolverConfig.code);
+    const code = this.transformCode(rawCode);
     const runtime = this.buildRuntime(context);
 
     // Request
@@ -30,6 +40,46 @@ class JsResolver {
     return fs.readFileSync(resolved, 'utf-8');
   }
 
+  /**
+   * Transform APPSYNC_JS-style code to CommonJS that runs in our VM sandbox:
+   *   - Strip: import { util, runtime } from '@aws-appsync/utils'
+   *   - Strip: import * as ddb from '@aws-appsync/utils/dynamodb'
+   *   - Convert: export function request(ctx) → exports.request = function request(ctx)
+   *   - Convert: export default function request(ctx) → exports.request = function request(ctx)
+   */
+  transformCode(code) {
+    let transformed = code;
+
+    // Remove import statements from @aws-appsync/*
+    // Handles: import { util } from '@aws-appsync/utils'
+    //          import { util, runtime } from '@aws-appsync/utils'
+    //          import * as ddb from '@aws-appsync/utils/dynamodb'
+    transformed = transformed.replace(
+      /^\s*import\s+.*from\s+['"]@aws-appsync\/[^'"]+['"]\s*;?\s*$/gm,
+      ''
+    );
+
+    // Convert: export function name(...)  →  exports.name = function name(...)
+    transformed = transformed.replace(
+      /^\s*export\s+function\s+(\w+)/gm,
+      'exports.$1 = function $1'
+    );
+
+    // Convert: export const name = (...)  →  exports.name = (...)
+    transformed = transformed.replace(
+      /^\s*export\s+const\s+(\w+)\s*=/gm,
+      'exports.$1 ='
+    );
+
+    // Convert: export default function name(...)  →  exports.name = function name(...)
+    transformed = transformed.replace(
+      /^\s*export\s+default\s+function\s+(\w+)/gm,
+      'exports.$1 = function $1'
+    );
+
+    return transformed;
+  }
+
   runHandler(code, handlerName, runtime) {
     const moduleExports = {};
     const moduleObj = { exports: moduleExports };
@@ -38,7 +88,11 @@ class JsResolver {
       exports: moduleExports,
       module: moduleObj,
       require: () => { throw new Error('require is not available in APPSYNC_JS runtime'); },
-      console: { log: (...a) => console.log('    [Resolver]', ...a), error: (...a) => console.error('    [Resolver]', ...a) },
+      console: {
+        log: (...a) => console.log('    [Resolver]', ...a),
+        error: (...a) => console.error('    [Resolver]', ...a),
+      },
+      // APPSYNC_JS runtime globals
       util: runtime.util,
       runtime: runtime.runtime,
       ctx: runtime.ctx,
@@ -49,7 +103,7 @@ class JsResolver {
     const wrapped = `(function(exports,module,util,runtime,ctx,context,console){${code}})(exports,module,util,runtime,ctx,context,console);`;
     new vm.Script(wrapped, { filename: 'resolver.js' }).runInContext(vmContext);
 
-    // Resolve exports
+    // Resolve exports (handle both module.exports = {...} and exports.x = ...)
     const resolved = (sandbox.module.exports && sandbox.module.exports !== moduleExports)
       ? sandbox.module.exports
       : sandbox.exports;
@@ -85,6 +139,14 @@ class JsResolver {
         nowEpochMilliSeconds: () => Date.now(),
       },
       dynamodb: {
+        toDynamoDB: (value) => {
+          if (typeof value === 'string') return { S: value };
+          if (typeof value === 'number') return { N: String(value) };
+          if (typeof value === 'boolean') return { BOOL: value };
+          if (value == null) return { NULL: true };
+          if (Array.isArray(value)) return { L: value };
+          return { S: JSON.stringify(value) };
+        },
         toMapValues: (obj) => {
           const r = {};
           for (const [k, v] of Object.entries(obj)) {
