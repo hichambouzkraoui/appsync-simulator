@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "start:select": "node src/cli.mjs",
     "debug": "JAVA_LAMBDA_DEBUG=5005 PYTHON_LAMBDA_DEBUG=5678 node --inspect src/server.js",
+    "debug:select": "node src/cli.mjs --inspect",
     "dev": "node --watch src/server.js",
     "dev:debug": "JAVA_LAMBDA_DEBUG=5005 PYTHON_LAMBDA_DEBUG=5678 node --watch --inspect src/server.js"
   },
@@ -13,6 +15,7 @@
     "@aws-sdk/client-dynamodb": "^3.650.0",
     "@aws-sdk/lib-dynamodb": "^3.650.0",
     "@graphql-tools/schema": "^10.0.6",
+    "@inquirer/prompts": "^5.5.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "graphql": "^16.9.0",

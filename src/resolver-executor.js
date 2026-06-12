@@ -14,7 +14,18 @@ const { NoneDatasource } = require('./datasources/none');
 function createResolverExecutor(config) {
   const datasourceInstances = {};
 
+  // Filter: if LAMBDAS env is set, only load those Lambda datasources
+  const lambdaFilter = process.env.LAMBDAS
+    ? process.env.LAMBDAS.split(',').map((s) => s.trim())
+    : null;
+
   for (const [name, dsConfig] of Object.entries(config.datasources)) {
+    // Skip Lambda datasources not in the filter
+    if (dsConfig.type === 'AWS_LAMBDA' && lambdaFilter && !lambdaFilter.includes(name)) {
+      datasourceInstances[name] = new SkippedDatasource(name);
+      continue;
+    }
+
     switch (dsConfig.type) {
       case 'AMAZON_DYNAMODB':
         datasourceInstances[name] = new DynamoDBDatasource(name, dsConfig.config);
@@ -65,3 +76,17 @@ function createResolverExecutor(config) {
 }
 
 module.exports = { createResolverExecutor };
+
+/**
+ * Placeholder for Lambda datasources that were skipped via LAMBDAS filter.
+ */
+class SkippedDatasource {
+  constructor(name) {
+    this.name = name;
+    console.log(`  [SKIP] ${name} — not in LAMBDAS filter`);
+  }
+
+  async invoke() {
+    throw new Error(`${this.name} is not loaded. Add it to LAMBDAS env to enable.`);
+  }
+}
