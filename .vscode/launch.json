@@ -21,6 +21,22 @@
       "request": "attach",
       "hostName": "localhost",
       "port": 5005
+    },
+    {
+      "name": "Attach Python Lambda",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": false,
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "${workspaceFolder}"
+        }
+      ]
     }
   ]
 }

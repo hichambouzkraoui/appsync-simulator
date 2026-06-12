@@ -18,6 +18,8 @@ build/
 
 # Environment
 .env
+.venv/
+__pycache__/
 
 # IDE (keep .vscode committed for shared configs)
 .idea/

@@ -5,9 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "debug": "JAVA_LAMBDA_DEBUG=5005 node --inspect src/server.js",
+    "debug": "JAVA_LAMBDA_DEBUG=5005 PYTHON_LAMBDA_DEBUG=5678 node --inspect src/server.js",
     "dev": "node --watch src/server.js",
-    "dev:debug": "JAVA_LAMBDA_DEBUG=5005 node --watch --inspect src/server.js"
+    "dev:debug": "JAVA_LAMBDA_DEBUG=5005 PYTHON_LAMBDA_DEBUG=5678 node --watch --inspect src/server.js"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.650.0",

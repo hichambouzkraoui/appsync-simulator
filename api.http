@@ -302,3 +302,58 @@ Content-Type: application/json
 }
 
 ###
+
+### ============================================
+### NOTIFICATIONS (Python Lambda)
+### ============================================
+
+### Send Email Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-1\", channel: EMAIL, subject: \"Order Shipped\", message: \"Your order #123 has been shipped!\" }) { id userId channel subject message status sentAt } }"
+}
+
+###
+
+### Send Push Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-1\", channel: PUSH, message: \"Your order is ready for pickup\" }) { id channel status } }"
+}
+
+###
+
+### Send SMS Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-2\", channel: SMS, message: \"Your verification code is 123456\" }) { id channel status sentAt } }"
+}
+
+###
+
+### List Notifications for User
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ listNotifications(userId: \"user-1\") { id channel subject message status sentAt } }"
+}
+
+###
+
+### Get Notification by ID
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetNotification($id: ID!) { getNotification(id: $id) { id userId channel subject message status sentAt } }",
+  "variables": { "id": "REPLACE_WITH_NOTIFICATION_ID" }
+}
+
+###

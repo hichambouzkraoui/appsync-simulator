@@ -63,6 +63,14 @@ datasources:
       projectPath: ../examples/java-lambda
       handler: com.example.InventoryHandler
 
+  # Python Lambda — notification service
+  NotificationServiceLambda:
+    type: AWS_LAMBDA
+    config:
+      runtime: python
+      functionPath: ../examples/python-lambda/handler.py
+      handler: handler
+
 # Resolver mappings
 resolvers:
   # ── Users (VTL + DynamoDB) ──────────────────────────────────────────────────
@@ -188,3 +196,19 @@ resolvers:
     datasource: InventoryServiceLambda
     type: js
     code: ../resolvers/js/adjustStock.js
+
+  # ── Notifications (Python Lambda) ───────────────────────────────────────────
+  Query.getNotification:
+    datasource: NotificationServiceLambda
+    type: js
+    code: ../resolvers/js/getNotification.js
+
+  Query.listNotifications:
+    datasource: NotificationServiceLambda
+    type: js
+    code: ../resolvers/js/listNotifications.js
+
+  Mutation.sendNotification:
+    datasource: NotificationServiceLambda
+    type: js
+    code: ../resolvers/js/sendNotification.js

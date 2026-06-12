@@ -3,6 +3,7 @@ const { JsResolver } = require('./resolvers/js-resolver');
 const { LambdaJsDatasource } = require('./datasources/lambda-js');
 const { LambdaDotnetDatasource } = require('./datasources/lambda-dotnet');
 const { LambdaJavaDatasource } = require('./datasources/lambda-java');
+const { LambdaPythonDatasource } = require('./datasources/lambda-python');
 const { DynamoDBDatasource } = require('./datasources/dynamodb');
 const { NoneDatasource } = require('./datasources/none');
 
@@ -23,6 +24,8 @@ function createResolverExecutor(config) {
           datasourceInstances[name] = new LambdaDotnetDatasource(name, dsConfig.config);
         } else if (dsConfig.config.runtime === 'java') {
           datasourceInstances[name] = new LambdaJavaDatasource(name, dsConfig.config);
+        } else if (dsConfig.config.runtime === 'python') {
+          datasourceInstances[name] = new LambdaPythonDatasource(name, dsConfig.config);
         } else {
           datasourceInstances[name] = new LambdaJsDatasource(name, dsConfig.config);
         }
