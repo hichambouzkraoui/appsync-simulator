@@ -15,6 +15,9 @@ async function startServer() {
   console.log(`   Schema: ${config.schemaPath}`);
   console.log(`   Datasources: ${Object.keys(config.datasources).length}`);
   console.log(`   Resolvers: ${Object.keys(config.resolvers).length} mappings`);
+  if (process.env.LAMBDAS) {
+    console.log(`   Filter: ${process.env.LAMBDAS}`);
+  }
 
   const executor = createResolverExecutor(config);
   const resolvers = buildResolvers(config, executor);
@@ -66,13 +69,25 @@ async function startServer() {
     .map((ds) => ds.startPromise);
 
   Promise.all(pending).then(() => {
+    const lambdaFilter = process.env.LAMBDAS
+      ? process.env.LAMBDAS.split(',').map((s) => s.trim())
+      : null;
+
     const lines = Object.entries(config.datasources)
       .filter(([, ds]) => ds.type !== 'NONE')
       .map(([name, ds]) => {
-        if (ds.type === 'AWS_LAMBDA') return `   • ${name} (${ds.config.runtime})`;
-        if (ds.type === 'AMAZON_DYNAMODB') return `   • ${name} (dynamodb → ${ds.config.tableName})`;
-        return `   • ${name} (${ds.type})`;
+        let label;
+        if (ds.type === 'AWS_LAMBDA') label = `${name} (${ds.config.runtime})`;
+        else if (ds.type === 'AMAZON_DYNAMODB') label = `${name} (dynamodb → ${ds.config.tableName})`;
+        else label = `${name} (${ds.type})`;
+
+        // Show skip indicator for filtered-out Lambdas
+        if (ds.type === 'AWS_LAMBDA' && lambdaFilter && !lambdaFilter.includes(name)) {
+          return `   ○ ${label} — skipped`;
+        }
+        return `   ● ${label}`;
       });
+
     console.log('📦 Datasources:');
     lines.forEach((l) => console.log(l));
     console.log('');

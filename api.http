@@ -247,3 +247,113 @@ Content-Type: application/json
 }
 
 ###
+
+### ============================================
+### INVENTORY (Java Lambda)
+### ============================================
+
+### Check Stock
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ checkStock(productId: \"prod-001\") { productId productName totalStock reserved available inStock } }"
+}
+
+###
+
+### Reserve Stock
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { reserveStock(input: { productId: \"prod-001\", orderId: \"order-99\", quantity: 5 }) { reservationId productId orderId quantity status createdAt } }"
+}
+
+###
+
+### Release Stock (use reservationId from above)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation ReleaseStock($id: ID!) { releaseStock(reservationId: $id) { reservationId status releasedAt } }",
+  "variables": { "id": "REPLACE_WITH_RESERVATION_ID" }
+}
+
+###
+
+### Adjust Stock (+10)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { adjustStock(input: { productId: \"prod-003\", adjustment: 10, reason: \"Restock delivery\" }) { productId previousStock adjustment currentStock reason adjustedAt } }"
+}
+
+###
+
+### Adjust Stock (-5)
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { adjustStock(input: { productId: \"prod-002\", adjustment: -5, reason: \"Damaged items\" }) { productId previousStock adjustment currentStock reason adjustedAt } }"
+}
+
+###
+
+### ============================================
+### NOTIFICATIONS (Python Lambda)
+### ============================================
+
+### Send Email Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-1\", channel: EMAIL, subject: \"Order Shipped\", message: \"Your order #123 has been shipped!\" }) { id userId channel subject message status sentAt } }"
+}
+
+###
+
+### Send Push Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-1\", channel: PUSH, message: \"Your order is ready for pickup\" }) { id channel status } }"
+}
+
+###
+
+### Send SMS Notification
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "mutation { sendNotification(input: { userId: \"user-2\", channel: SMS, message: \"Your verification code is 123456\" }) { id channel status sentAt } }"
+}
+
+###
+
+### List Notifications for User
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "{ listNotifications(userId: \"user-1\") { id channel subject message status sentAt } }"
+}
+
+###
+
+### Get Notification by ID
+POST http://localhost:4000/graphql
+Content-Type: application/json
+
+{
+  "query": "query GetNotification($id: ID!) { getNotification(id: $id) { id userId channel subject message status sentAt } }",
+  "variables": { "id": "REPLACE_WITH_NOTIFICATION_ID" }
+}
+
+###

@@ -22,15 +22,18 @@ class LambdaDotnetDatasource {
     this.name = name;
     this.projectPath = config.projectPath;
     this.assembly = config.assembly || path.basename(config.projectPath);
-    this.handler = config.handler; // Format: Assembly::Namespace.Class::Method
+    this.handler = config.handler;
+    this.envVars = config.env || {}; // Format: Assembly::Namespace.Class::Method
 
     this.process = null;
     this.startPromise = null;
     this.pending = null;
     this.buffer = '';
+    this.reloading = false;
 
     console.log(`  [Lambda/.NET] Initialized: ${name} → ${this.projectPath}`);
     this.startPromise = this.launch();
+    this.watchForChanges();
   }
 
   async launch() {
@@ -63,6 +66,7 @@ class LambdaDotnetDatasource {
         ...process.env,
         AWS_LAMBDA_FUNCTION_NAME: this.name,
         AWS_REGION: 'us-east-1',
+        ...this.envVars,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -88,7 +92,9 @@ class LambdaDotnetDatasource {
     });
 
     this.process.on('close', (code) => {
-      console.log(`  [Lambda/.NET] ${this.name} exited (code: ${code})`);
+      if (!this.reloading) {
+        console.log(`  [Lambda/.NET] ${this.name} exited (code: ${code})`);
+      }
       this.process = null;
       if (this.pending) {
         this.pending.reject(new Error(`${this.name} process exited (code ${code})`));
@@ -104,15 +110,64 @@ class LambdaDotnetDatasource {
       );
       const onData = (data) => {
         if (data.toString().includes('__READY__')) {
-          this.process.stdout.removeListener('data', onData);
+          if (this.process) {
+            this.process.stdout.removeListener('data', onData);
+          }
           clearTimeout(timeout);
           resolve();
         }
       };
+      if (!this.process) {
+        clearTimeout(timeout);
+        return reject(new Error(`${this.name} process exited before ready`));
+      }
       this.process.stdout.on('data', onData);
     });
 
     console.log(`  [Lambda/.NET] ${this.name} ready (PID: ${this.process.pid})`);
+  }
+
+  /**
+   * Watch .cs files in the project directory — rebuild and relaunch on change.
+   */
+  watchForChanges() {
+    const projectDir = path.resolve(this.projectPath);
+    let debounce = null;
+
+    fs.watch(projectDir, { recursive: true }, (event, filename) => {
+      if (!filename?.endsWith('.cs')) return;
+      if (this.reloading) return;
+
+      clearTimeout(debounce);
+      debounce = setTimeout(() => this.reload(), 500);
+    });
+  }
+
+  async reload() {
+    this.reloading = true;
+    console.log(`  [Lambda/.NET] 🔄 ${this.name} changed — rebuilding...`);
+
+    // Kill the existing process and wait for it to exit
+    if (this.process) {
+      const proc = this.process;
+      this.process = null;
+      this.buffer = '';
+      this.pending = null;
+
+      await new Promise((resolve) => {
+        proc.on('close', resolve);
+        proc.kill();
+      });
+    }
+
+    try {
+      this.startPromise = this.launch();
+      await this.startPromise;
+    } catch (err) {
+      console.error(`  [Lambda/.NET] 🔄 ${this.name} reload failed:`, err.message);
+    }
+
+    this.reloading = false;
   }
 
   async invoke(request, context) {

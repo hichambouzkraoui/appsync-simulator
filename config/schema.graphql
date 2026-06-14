@@ -15,6 +15,13 @@ type Query {
   # Payments
   getPayment(id: ID!): Payment
   listPayments(orderId: ID!): [Payment!]!
+
+  # Inventory
+  checkStock(productId: ID!): StockInfo!
+
+  # Notifications
+  getNotification(id: ID!): Notification
+  listNotifications(userId: ID!, limit: Int): [Notification!]!
 }
 
 type Mutation {
@@ -35,6 +42,14 @@ type Mutation {
   # Payments
   chargePayment(input: ChargePaymentInput!): Payment!
   refundPayment(input: RefundPaymentInput!): Payment!
+
+  # Inventory
+  reserveStock(input: ReserveStockInput!): StockReservation!
+  releaseStock(reservationId: ID!): StockRelease!
+  adjustStock(input: AdjustStockInput!): StockAdjustment!
+
+  # Notifications
+  sendNotification(input: SendNotificationInput!): Notification!
 }
 
 # ─── Users ────────────────────────────────────────────────────────────────────
@@ -156,4 +171,77 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+# ─── Inventory ────────────────────────────────────────────────────────────────
+
+input ReserveStockInput {
+  productId: ID!
+  orderId: ID!
+  quantity: Int!
+}
+
+input AdjustStockInput {
+  productId: ID!
+  adjustment: Int!
+  reason: String
+}
+
+type StockInfo {
+  productId: ID!
+  productName: String!
+  totalStock: Int!
+  reserved: Int!
+  available: Int!
+  inStock: Boolean!
+}
+
+type StockReservation {
+  reservationId: ID!
+  productId: ID!
+  orderId: ID!
+  quantity: Int!
+  status: String!
+  createdAt: String!
+}
+
+type StockRelease {
+  reservationId: ID!
+  status: String!
+  releasedAt: String!
+}
+
+type StockAdjustment {
+  productId: ID!
+  previousStock: Int!
+  adjustment: Int!
+  currentStock: Int!
+  reason: String!
+  adjustedAt: String!
+}
+
+# ─── Notifications ────────────────────────────────────────────────────────────
+
+input SendNotificationInput {
+  userId: ID!
+  channel: NotificationChannel!
+  subject: String
+  message: String!
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  SMS
+}
+
+type Notification {
+  id: ID!
+  userId: ID!
+  channel: String!
+  subject: String
+  message: String!
+  status: String!
+  sentAt: String!
+  createdAt: String!
 }
