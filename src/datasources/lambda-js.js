@@ -10,6 +10,7 @@ class LambdaJsDatasource {
     this.name = name;
     this.functionPath = config.functionPath;
     this.handlerName = config.handler || 'handler';
+    this.envVars = config.env || {};
 
     try {
       this.loadHandler();
@@ -36,6 +37,13 @@ class LambdaJsDatasource {
   async invoke(request, context) {
     const handler = this.loadHandler();
 
+    // Inject configured env vars for this Lambda
+    const envBackup = {};
+    for (const [k, v] of Object.entries(this.envVars)) {
+      envBackup[k] = process.env[k];
+      process.env[k] = v;
+    }
+
     const event = {
       typeName: context.info?.parentTypeName || 'Query',
       fieldName: context.info?.fieldName || 'unknown',
@@ -54,6 +62,13 @@ class LambdaJsDatasource {
     };
 
     const result = await handler(event, lambdaContext);
+
+    // Restore env vars
+    for (const [k, v] of Object.entries(envBackup)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+
     return result;
   }
 }

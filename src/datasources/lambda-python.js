@@ -24,6 +24,7 @@ class LambdaPythonDatasource {
     this.name = name;
     this.functionPath = config.functionPath;
     this.handlerName = config.handler || 'handler';
+    this.envVars = config.env || {};
 
     this.process = null;
     this.startPromise = null;
@@ -65,6 +66,7 @@ class LambdaPythonDatasource {
         AWS_REGION: 'us-east-1',
         PYTHONDONTWRITEBYTECODE: '1',
         ...(debugPort && { PYTHON_LAMBDA_DEBUG: String(debugPort) }),
+        ...this.envVars,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

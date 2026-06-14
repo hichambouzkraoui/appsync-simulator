@@ -26,6 +26,7 @@ class LambdaJavaDatasource {
     this.projectPath = config.projectPath;
     this.handler = config.handler; // Fully qualified class name
     this.buildCommand = config.buildCommand || 'mvn package -q -DskipTests';
+    this.envVars = config.env || {};
 
     this.process = null;
     this.startPromise = null;
@@ -70,7 +71,7 @@ class LambdaJavaDatasource {
     const debugPort = process.env.JAVA_LAMBDA_DEBUG;
     if (debugPort) {
       const port = parseInt(debugPort) + javaDebugPortOffset++;
-      javaArgs.unshift(`-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${port}`);
+      javaArgs.unshift(`-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:${port}`);
       console.log(`  [Lambda/Java]   🐛 Debug port: ${port}`);
     }
 
@@ -84,6 +85,7 @@ class LambdaJavaDatasource {
         ...process.env,
         AWS_LAMBDA_FUNCTION_NAME: this.name,
         AWS_REGION: 'us-east-1',
+        ...this.envVars,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

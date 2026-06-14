@@ -22,7 +22,8 @@ class LambdaDotnetDatasource {
     this.name = name;
     this.projectPath = config.projectPath;
     this.assembly = config.assembly || path.basename(config.projectPath);
-    this.handler = config.handler; // Format: Assembly::Namespace.Class::Method
+    this.handler = config.handler;
+    this.envVars = config.env || {}; // Format: Assembly::Namespace.Class::Method
 
     this.process = null;
     this.startPromise = null;
@@ -65,6 +66,7 @@ class LambdaDotnetDatasource {
         ...process.env,
         AWS_LAMBDA_FUNCTION_NAME: this.name,
         AWS_REGION: 'us-east-1',
+        ...this.envVars,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

@@ -70,6 +70,11 @@ datasources:
       runtime: python
       functionPath: ../examples/python-lambda/handler.py
       handler: handler
+      env:
+        SMTP_HOST: localhost
+        SMTP_PORT: "1025"
+        FROM_EMAIL: noreply@example.com
+        MAX_RETRIES: "3"
 
 # Resolver mappings
 resolvers:

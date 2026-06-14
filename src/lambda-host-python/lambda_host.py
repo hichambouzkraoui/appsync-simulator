@@ -63,11 +63,12 @@ def main():
             import debugpy
             port = int(debug_port)
             debugpy.listen(("localhost", port))
-            print(f"[LambdaHost] 🐛 debugpy listening on port {port}", file=sys.stderr)
+            print(f"[LambdaHost] 🐛 debugpy listening on port {port} — attach to debug", file=sys.stderr)
+            # Don't call debugpy.wait_for_client() — process runs immediately
         except ImportError:
             print("[LambdaHost] debugpy not installed — run: pip install debugpy", file=sys.stderr)
         except Exception as e:
-            print(f"[LambdaHost] debugpy failed: {e}", file=sys.stderr)
+            print(f"[LambdaHost] debugpy error: {e}", file=sys.stderr)
 
     try:
         handler = load_handler(module_path, handler_name)
@@ -76,10 +77,12 @@ def main():
         sys.exit(1)
 
     # Signal ready
+    sys.stdout = sys.__stdout__  # ensure clean stdout
     print("__READY__", flush=True)
 
-    # Persistent loop
-    for line in sys.stdin:
+    # Persistent loop — read from original stdin
+    stdin = sys.__stdin__
+    for line in stdin:
         line = line.strip()
         if not line:
             continue
@@ -90,13 +93,12 @@ def main():
 
             # Redirect stdout to stderr during handler execution
             # so print() in Lambda code doesn't corrupt the JSON protocol
-            old_stdout = sys.stdout
             sys.stdout = sys.stderr
 
             result = handler(event, context)
 
             # Restore stdout for our JSON response
-            sys.stdout = old_stdout
+            sys.stdout = sys.__stdout__
             print(json.dumps(result, default=str), flush=True)
         except Exception as e:
             sys.stdout = sys.__stdout__  # ensure stdout is restored

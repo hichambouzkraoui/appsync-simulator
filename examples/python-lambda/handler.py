@@ -9,6 +9,7 @@ Handles sending and managing notifications:
 Standard AWS Lambda handler — no simulator-specific code.
 """
 
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -54,6 +55,11 @@ def send_notification(data, event):
     notification_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
+    # Read config from environment variables
+    smtp_host = os.environ.get("SMTP_HOST", "localhost")
+    smtp_port = os.environ.get("SMTP_PORT", "25")
+    from_email = os.environ.get("FROM_EMAIL", "no-reply@localhost")
+
     notification = {
         "id": notification_id,
         "userId": user_id,
@@ -70,7 +76,7 @@ def send_notification(data, event):
 
     # Simulate sending based on channel
     if channel == "email":
-        print(f"[NotificationLambda] 📧 Email to {user_id}: {subject}", flush=True)
+        print(f"[NotificationLambda] 📧 Email via {smtp_host}:{smtp_port} from {from_email} to {user_id}: {subject}", flush=True)
     elif channel == "push":
         print(f"[NotificationLambda] 📱 Push to {user_id}: {message[:50]}", flush=True)
     elif channel == "sms":
