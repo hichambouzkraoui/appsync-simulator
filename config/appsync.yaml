@@ -2,6 +2,12 @@
 
 schema: schema.graphql
 
+# Shared environment variables — injected into ALL Lambda datasources
+env:
+  STAGE: local
+  LOG_LEVEL: debug
+  AWS_REGION: us-east-1
+
 # Datasource definitions
 datasources:
   UsersTable:

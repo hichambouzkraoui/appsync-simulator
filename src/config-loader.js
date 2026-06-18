@@ -21,14 +21,20 @@ async function loadConfig(configDir) {
   }
   const schema = fs.readFileSync(schemaPath, 'utf-8');
 
+  // Shared env variables — merged into all Lambda datasources
+  const sharedEnv = rawConfig.env || {};
+
   // Process datasources
   const datasources = {};
   for (const [name, dsConfig] of Object.entries(rawConfig.datasources || {})) {
-    datasources[name] = {
-      ...dsConfig,
-      // Resolve relative paths
-      config: resolvePaths(dsConfig.config || {}, configDir),
-    };
+    const resolvedConfig = resolvePaths(dsConfig.config || {}, configDir);
+
+    // Merge shared env into Lambda datasource env (per-Lambda overrides shared)
+    if (dsConfig.type === 'AWS_LAMBDA' && (sharedEnv || resolvedConfig.env)) {
+      resolvedConfig.env = { ...sharedEnv, ...(resolvedConfig.env || {}) };
+    }
+
+    datasources[name] = { ...dsConfig, config: resolvedConfig };
   }
 
   // Process resolvers
