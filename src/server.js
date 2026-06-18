@@ -1,12 +1,67 @@
 const express = require('express');
 const cors = require('cors');
 const { graphql } = require('graphql');
+const { GraphQLScalarType } = require('graphql');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const { loadConfig } = require('./config-loader');
 const { createResolverExecutor } = require('./resolver-executor');
 
 const PORT = process.env.PORT || 4000;
 const CONFIG_DIR = process.env.CONFIG_DIR || './config';
+
+/**
+ * AppSync built-in scalar types and directives.
+ * These are automatically available in AppSync schemas but need to be
+ * defined explicitly for the local GraphQL engine.
+ */
+const APPSYNC_SCALARS = `
+scalar AWSDate
+scalar AWSTime
+scalar AWSDateTime
+scalar AWSTimestamp
+scalar AWSEmail
+scalar AWSJSON
+scalar AWSURL
+scalar AWSPhone
+scalar AWSIPAddress
+scalar BigInt
+scalar Double
+`;
+
+const APPSYNC_DIRECTIVES = `
+directive @aws_api_key on FIELD_DEFINITION | OBJECT
+directive @aws_auth(cognito_groups: [String!]!) on FIELD_DEFINITION | OBJECT
+directive @aws_cognito_user_pools(cognito_groups: [String!]) on FIELD_DEFINITION | OBJECT
+directive @aws_iam on FIELD_DEFINITION | OBJECT
+directive @aws_lambda on FIELD_DEFINITION | OBJECT
+directive @aws_oidc on FIELD_DEFINITION | OBJECT
+directive @aws_subscribe(mutations: [String!]!) on FIELD_DEFINITION
+directive @deprecated(reason: String) on FIELD_DEFINITION | ENUM_VALUE
+`;
+
+/** Pass-through scalar — accepts any value, returns as-is. */
+function makePassthroughScalar(name) {
+  return new GraphQLScalarType({
+    name,
+    serialize: (v) => v,
+    parseValue: (v) => v,
+    parseLiteral: (ast) => ast.value,
+  });
+}
+
+const appsyncScalarResolvers = {
+  AWSDate: makePassthroughScalar('AWSDate'),
+  AWSTime: makePassthroughScalar('AWSTime'),
+  AWSDateTime: makePassthroughScalar('AWSDateTime'),
+  AWSTimestamp: makePassthroughScalar('AWSTimestamp'),
+  AWSEmail: makePassthroughScalar('AWSEmail'),
+  AWSJSON: makePassthroughScalar('AWSJSON'),
+  AWSURL: makePassthroughScalar('AWSURL'),
+  AWSPhone: makePassthroughScalar('AWSPhone'),
+  AWSIPAddress: makePassthroughScalar('AWSIPAddress'),
+  BigInt: makePassthroughScalar('BigInt'),
+  Double: makePassthroughScalar('Double'),
+};
 
 async function startServer() {
   const config = await loadConfig(CONFIG_DIR);
@@ -21,7 +76,14 @@ async function startServer() {
 
   const executor = createResolverExecutor(config);
   const resolvers = buildResolvers(config, executor);
-  const schema = makeExecutableSchema({ typeDefs: config.schema, resolvers });
+
+  // Prepend AppSync scalars and directives to the user schema
+  const typeDefs = APPSYNC_SCALARS + APPSYNC_DIRECTIVES + config.schema;
+
+  const schema = makeExecutableSchema({
+    typeDefs,
+    resolvers: { ...appsyncScalarResolvers, ...resolvers },
+  });
 
   const app = express();
   app.use(cors());
