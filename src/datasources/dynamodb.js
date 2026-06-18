@@ -26,19 +26,24 @@ class DynamoDBDatasource {
   constructor(name, config) {
     this.name = name;
     this.tableName = config.tableName;
-    this.endpoint = config.endpoint || 'http://localhost:8000';
+    this.endpoint = config.endpoint || null;
     this.useInMemory = false;
 
+    // Build client config — only add endpoint/dummy creds for local DynamoDB
+    const clientConfig = { region: config.region || 'us-east-1' };
+
+    if (this.endpoint) {
+      clientConfig.endpoint = this.endpoint;
+      clientConfig.credentials = { accessKeyId: 'local', secretAccessKey: 'local' };
+    }
+
     this.docClient = DynamoDBDocumentClient.from(
-      new DynamoDBClient({
-        endpoint: this.endpoint,
-        region: config.region || 'us-east-1',
-        credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
-      }),
+      new DynamoDBClient(clientConfig),
       { marshallOptions: { removeUndefinedValues: true } }
     );
 
-    console.log(`  [DynamoDB] Initialized: ${name} → ${this.tableName}`);
+    const target = this.endpoint || `dynamodb.${clientConfig.region}.amazonaws.com`;
+    console.log(`  [DynamoDB] Initialized: ${name} → ${this.tableName} @ ${target}`);
   }
 
   async invoke(request) {
@@ -52,7 +57,8 @@ class DynamoDBDatasource {
         ? this.memoryOp(operation, tableName, request)
         : await this.remoteOp(operation, tableName, request);
     } catch (error) {
-      if (error.message.includes('ECONNREFUSED') || error.code === 'ECONNREFUSED') {
+      // Only fall back to in-memory for local endpoints (not real AWS)
+      if (this.endpoint && (error.message.includes('ECONNREFUSED') || error.code === 'ECONNREFUSED')) {
         if (!this.useInMemory) {
           console.warn(`  [DynamoDB] ⚠️  Falling back to in-memory for ${this.name}`);
           this.useInMemory = true;
